@@ -5,6 +5,8 @@
 [![npm version](https://img.shields.io/npm/v/inertia-nestjs.svg?style=flat-square)](https://www.npmjs.com/package/inertia-nestjs)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+---
+
 ## Features
 
 - 🚀 **Platform agnostic** — works with Express, Fastify, or any NestJS HTTP adapter
@@ -13,22 +15,31 @@
 - 🪶 **Lazy, deferred, merge, and always props**
 - 🔁 **Partial reload support**
 - 🔐 **History encryption**
+- 🌐 **Optional Server‑Side Rendering (SSR)**
 - 🧪 **Testing utilities**
 - 📦 **Inspired by `inertia-laravel`**
 
 ---
 
-## Installation
+# Installation
 
 ```bash
 npm install inertia-nestjs
 ```
 
+You will also need an Inertia client adapter depending on your frontend:
+
+```bash
+npm install @inertiajs/react
+# or
+npm install @inertiajs/vue3
+```
+
 ---
 
-## Quick Start
+# Quick Start
 
-### 1. Register the module
+## 1. Register the module
 
 ```ts
 // app.module.ts
@@ -45,50 +56,71 @@ import { InertiaModule, HandleInertiaRequests } from 'inertia-nestjs';
 })
 export class AppModule implements NestModule {
     configure(consumer: MiddlewareConsumer) {
-        // Apply the Inertia middleware to all routes
         consumer.apply(HandleInertiaRequests).forRoutes('*');
     }
 }
 ```
 
-### 2. Set up your root template (e.g. Handlebars / EJS)
+---
 
-Inertia needs a root HTML template that embeds the serialized page object.
+# Root Template
 
-**Handlebars (`views/app.hbs`)**:
+Inertia requires a root HTML template that embeds the serialized page object.
 
-```html
+### Handlebars (`views/app.hbs`)
+
+```
 <!DOCTYPE html>
 <html>
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>My App</title>
-        <link rel="stylesheet" href="/build/app.css" />
-        <script type="module" src="/build/app.js" defer></script>
-    </head>
-    <body>
-        <div id="app" data-page="{{{json page}}}"></div>
-    </body>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<title>My App</title>
+
+<link rel="stylesheet" href="/build/app.css" />
+<script type="module" src="/build/app.js" defer></script>
+
+{{#each ssrHead}}
+  {{{this}}}
+{{/each}}
+
+</head>
+
+<body>
+
+{{#if ssrBody}}
+<div id="app" data-page="{{{json page}}}">
+  {{{ssrBody}}}
+</div>
+{{else}}
+<div id="app" data-page="{{{json page}}}"></div>
+{{/if}}
+
+</body>
 </html>
 ```
 
-**EJS (`views/app.ejs`)**:
+### EJS (`views/app.ejs`)
 
-```html
+```
 <div id="app" data-page="<%- JSON.stringify(page) %>"></div>
 ```
 
-### 3. Use the `@Inertia()` decorator in a controller
+---
 
-```ts
-// users.controller.ts
+# Controller Usage
+
+## Using the `@Inertia()` decorator
+
+```
 import { Controller, Get, Param } from '@nestjs/common';
 import { Inertia } from 'inertia-nestjs';
 import { UsersService } from './users.service';
 
 @Controller('users')
 export class UsersController {
+
     constructor(private readonly users: UsersService) {}
 
     @Get()
@@ -109,154 +141,156 @@ export class UsersController {
 }
 ```
 
-### 4. Or call `InertiaService.render()` directly (for fine-grained control)
+---
 
-```ts
+# Rendering Manually with `InertiaService`
+
+You may render pages manually if you need full control.
+
+```
 import { Controller, Get, Req, Res } from '@nestjs/common';
 import { InertiaService } from 'inertia-nestjs';
 import { Request, Response } from 'express';
 
 @Controller('dashboard')
 export class DashboardController {
-    constructor(private readonly inertia: InertiaService) {}
 
-    @Get()
-    async index(@Req() req: Request, @Res() res: Response) {
-        return this.inertia.render(req, res, 'Dashboard', {
-            props: {
-                stats: await this.getStats(),
-            },
-            encryptHistory: true,
-        });
-    }
+  constructor(private readonly inertia: InertiaService) {}
+
+  @Get()
+  async index(@Req() req: Request, @Res() res: Response) {
+    return this.inertia.render(req, res, 'Dashboard', {
+      props: {
+        stats: await this.getStats(),
+      },
+      encryptHistory: true,
+    });
+  }
+
 }
 ```
 
 ---
 
-## Sharing Props
+# Sharing Props
 
-Share data with **all** Inertia pages (e.g. auth user, flash messages).
+Share data with **all Inertia pages** (for example auth user or flash messages).
 
-### Option A — in `InertiaModule.forRoot()`
+## Option A — in `InertiaModule.forRoot()`
 
-```ts
+```
 InertiaModule.forRoot({
-    sharedProps: {
-        appName: 'My App',
-    },
+  sharedProps: {
+    appName: 'My App',
+  },
 });
 ```
 
-### Option B — extend `HandleInertiaRequests`
+---
 
-This is the recommended approach for per-request data (like the authenticated user):
+## Option B — extend `HandleInertiaRequests`
 
-```ts
-// handle-inertia-requests.middleware.ts
+Recommended for **per-request data**.
+
+```
 import { Injectable } from '@nestjs/common';
 import { HandleInertiaRequests, InertiaService } from 'inertia-nestjs';
 import { Request } from 'express';
 
 @Injectable()
 export class CustomInertiaMiddleware extends HandleInertiaRequests {
-    constructor(inertia: InertiaService) {
-        super(inertia);
-    }
 
-    async share(req: Request) {
-        return {
-            ...(await super.share(req)),
-            auth: {
-                user: (req as any).user
-                    ? { id: (req as any).user.id, name: (req as any).user.name }
-                    : null,
-            },
-            flash: {
-                message: (req.session as any)?.flash,
-            },
-        };
-    }
+  constructor(inertia: InertiaService) {
+    super(inertia);
+  }
+
+  async share(req: Request) {
+    return {
+      ...(await super.share(req)),
+
+      auth: {
+        user: (req as any).user
+          ? {
+              id: (req as any).user.id,
+              name: (req as any).user.name,
+            }
+          : null,
+      },
+
+      flash: {
+        message: (req.session as any)?.flash,
+      },
+    };
+  }
 }
 ```
 
-Then register your custom middleware instead:
+Register it:
 
-```ts
-consumer.apply(CustomInertiaMiddleware).forRoutes('*');
 ```
-
-### Option C — call `inertia.share()` in a service or provider
-
-```ts
-inertia.share('appName', 'My App');
-inertia.share('auth', () => ({ user: request.user }));
+consumer.apply(CustomInertiaMiddleware).forRoutes('*');
 ```
 
 ---
 
-## Lazy Props
+# Lazy Props
 
-Lazy props are **only** evaluated during partial reloads that explicitly request them.
-This is useful for expensive data that isn't needed on every visit.
+Lazy props are evaluated **only when explicitly requested during partial reloads**.
 
-```ts
+```
 import { lazy } from 'inertia-nestjs';
 
 @Get()
 @Inertia('Users/Index')
 async index() {
   return {
-    users: await this.users.findAll(),        // always included
-    permissions: lazy(() => this.getPerms()), // only on partial reload
+    users: await this.users.findAll(),
+    permissions: lazy(() => this.getPermissions()),
   };
 }
 ```
 
 ---
 
-## Always Props
+# Always Props
 
-Always props are included on **every** request, including partial reloads that
-don't explicitly list them.
+Always props are included on **every request**, even if not requested.
 
-```ts
+```
 import { always } from 'inertia-nestjs';
 
 return {
-    auth: always(() => ({ user: req.user })),
+  auth: always(() => ({ user: req.user })),
 };
 ```
 
 ---
 
-## Deferred Props
+# Deferred Props
 
-Deferred props are sent in a **separate async request** after the initial page
-load — great for heavy data that shouldn't block the initial render.
+Deferred props are sent **after the initial page render**.
 
-```ts
+```
 import { defer } from 'inertia-nestjs';
 
 @Get()
 @Inertia('Reports/Show')
 async show() {
   return {
-    summary: 'Quick summary',                          // sent immediately
-    chartData: defer(() => this.buildChartData()),     // async, default group
-    tableData: defer(() => this.buildTable(), 'table'), // async, 'table' group
+    summary: 'Quick summary',
+    chartData: defer(() => this.buildChartData()),
+    tableData: defer(() => this.buildTable(), 'table'),
   };
 }
 ```
 
 ---
 
-## Merge Props
+# Merge Props
 
-Merge props tell the client to **merge** new data with existing data instead of
-replacing it (useful for infinite scroll / pagination).
+Merge props allow the client to **merge new data with existing state**.
 
-```ts
+```
 import { merge } from 'inertia-nestjs';
 
 @Get()
@@ -270,116 +304,153 @@ async index() {
 
 ---
 
-## Asset Versioning
+# Asset Versioning
 
-Set the current asset version to trigger a full page reload when assets change:
+Force a full reload when assets change.
 
-```ts
+```
 InertiaModule.forRoot({
-    version: '1.2.3',
-    // Or a factory:
-    version: () => readFileSync('public/mix-manifest.json').toString(),
+  version: '1.2.3',
 });
 ```
 
-When the client's version header doesn't match, the middleware automatically
-responds with `409 Conflict` + `X-Inertia-Location`, causing the Inertia client
-to do a full reload.
+Dynamic version example:
+
+```
+version: () => readFileSync('public/build/manifest.json').toString()
+```
 
 ---
 
-## External Redirects (location)
+# External Redirects
 
-To redirect to an external URL (or force a full page visit):
+To redirect outside the SPA:
 
-```ts
+```
 @Post('logout')
 async logout(@Res() res: Response) {
-  // clears session...
   this.inertia.location(res, 'https://example.com');
 }
 ```
 
 ---
 
-## History Encryption
+# History Encryption
 
-Encrypt a page's browser history entry:
+Encrypt a page's browser history entry.
 
-```ts
+```
 @Inertia('Payments/New', { encryptHistory: true })
-newPayment() { ... }
+newPayment() {}
 ```
 
 ---
 
-## Testing
+# Server‑Side Rendering (SSR)
 
-```ts
+`inertia-nestjs` supports optional **server-side rendering**.
+
+Enable SSR:
+
+```
+InertiaModule.forRoot({
+  rootView: 'app',
+  version: '1.0.0',
+
+  ssr: {
+    enabled: true,
+    url: 'http://127.0.0.1:13714',
+    bundlePath: 'bootstrap/ssr/ssr.js',
+  },
+});
+```
+
+If the SSR server is unavailable or the bundle is missing, the adapter automatically **falls back to client-side rendering**.
+
+---
+
+# Example SSR Entry
+
+```
+import { createInertiaApp } from '@inertiajs/react';
+import createServer from '@inertiajs/react/server';
+import ReactDOMServer from 'react-dom/server';
+
+createServer(page =>
+  createInertiaApp({
+    page,
+    render: ReactDOMServer.renderToString,
+
+    resolve: async name => {
+      const pages = import.meta.glob('./pages/**/*.tsx');
+      const module = await pages[`./pages/${name}.tsx`]();
+      return module.default;
+    },
+
+    setup: ({ App, props }) => <App {...props} />,
+  }),
+);
+```
+
+---
+
+# Testing
+
+```
 import { assertInertia, assertInertiaLocation } from 'inertia-nestjs';
 import * as request from 'supertest';
 
-it('returns an Inertia users page', async () => {
-    const res = await request(app.getHttpServer())
-        .get('/users')
-        .set('X-Inertia', 'true')
-        .set('X-Inertia-Version', '1.0.0')
-        .expect(200);
+it('returns users page', async () => {
+  const res = await request(app.getHttpServer())
+    .get('/users')
+    .set('X-Inertia', 'true')
+    .set('X-Inertia-Version', '1.0.0')
+    .expect(200);
 
-    assertInertia(res.body, (page) => {
-        page.component('Users/Index')
-            .has('users')
-            .where('users[0].name', 'Alice');
-    });
+  assertInertia(res.body, page => {
+    page.component('Users/Index')
+      .has('users')
+      .where('users[0].name', 'Alice');
+  });
 });
 
 it('redirects to external URL', async () => {
-    const res = await request(app.getHttpServer())
-        .post('/logout')
-        .set('X-Inertia', 'true')
-        .expect(409);
+  const res = await request(app.getHttpServer())
+    .post('/logout')
+    .set('X-Inertia', 'true')
+    .expect(409);
 
-    assertInertiaLocation(res.headers, 'https://example.com');
+  assertInertiaLocation(res.headers, 'https://example.com');
 });
 ```
 
 ---
 
-## API Reference
+# API Reference
 
 ### `InertiaModule.forRoot(options)`
 
-| Option           | Type                     | Default | Description                   |
-| ---------------- | ------------------------ | ------- | ----------------------------- |
-| `rootView`       | `string`                 | `'app'` | Root template name            |
-| `version`        | `string \| () => string` | `''`    | Asset version                 |
-| `sharedProps`    | `object \| () => object` | `{}`    | Props shared with all pages   |
-| `encryptHistory` | `boolean`                | `false` | Encrypt history for all pages |
-
-### `InertiaService`
-
-| Method                                 | Description                |
-| -------------------------------------- | -------------------------- |
-| `render(req, res, component, options)` | Render an Inertia response |
-| `location(res, url)`                   | External redirect          |
-| `share(key, value)`                    | Share a prop globally      |
-| `getShared(key?)`                      | Get shared prop(s)         |
-| `flushShared()`                        | Clear all shared props     |
-| `setVersion(version)`                  | Set asset version          |
-| `getVersion()`                         | Get current asset version  |
-| `setRootView(name)`                    | Set root template name     |
-
-### Prop helpers
-
-| Helper              | Description                                                   |
-| ------------------- | ------------------------------------------------------------- |
-| `lazy(fn)`          | Only evaluated during partial reloads that request this prop  |
-| `always(fn)`        | Always evaluated, even if not in partial reload's `only` list |
-| `defer(fn, group?)` | Sent in a separate async request after initial load           |
-| `merge(fn)`         | Client merges data instead of replacing it                    |
+| Option         | Type                   | Default     | Description                   |
+| -------------- | ---------------------- | ----------- | ----------------------------- |
+| rootView       | string                 | `'app'`     | Root template                 |
+| version        | string \| () => string | `''`        | Asset version                 |
+| sharedProps    | object                 | `{}`        | Props shared with all pages   |
+| encryptHistory | boolean                | `false`     | Encrypt history for all pages |
+| ssr            | object                 | `undefined` | SSR configuration             |
 
 ---
 
-## License
+# Prop Helpers
+
+| Helper              | Description                           |
+| ------------------- | ------------------------------------- |
+| `lazy(fn)`          | Only evaluated during partial reloads |
+| `always(fn)`        | Always evaluated                      |
+| `defer(fn, group?)` | Loaded asynchronously                 |
+| `merge(fn)`         | Merge new data with existing          |
+
+---
+
+# License
 
 MIT
