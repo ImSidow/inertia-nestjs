@@ -5,9 +5,10 @@ import {
     NestInterceptor,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Observable, from, switchMap } from 'rxjs';
+import { Observable, from, switchMap, throwError } from 'rxjs';
 import { HttpRequestLike, HttpResponseLike } from '../adapters';
 import { INERTIA_COMPONENT_KEY } from '../common/inertia.constants';
+import { InertiaResponseHandledException } from '../common/inertia-response-handled.exception';
 import { RenderOptions } from '../common/inertia.interfaces';
 import { InertiaService } from '../services/inertia.service';
 
@@ -30,14 +31,17 @@ export class InertiaInterceptor implements NestInterceptor {
         private readonly reflector: Reflector,
     ) {}
 
-    intercept(context: ExecutionContext, next: CallHandler): Observable<void> {
+    intercept(
+        context: ExecutionContext,
+        next: CallHandler,
+    ): Observable<unknown> {
         const metadata = this.reflector.get<InertiaMetadata>(
             INERTIA_COMPONENT_KEY,
             context.getHandler(),
         );
 
         if (!metadata) {
-            return next.handle() as Observable<void>;
+            return next.handle();
         }
 
         const http = context.switchToHttp();
@@ -46,7 +50,6 @@ export class InertiaInterceptor implements NestInterceptor {
 
         return next.handle().pipe(
             switchMap((data: unknown) => {
-                // The handler can return props directly or { props, encryptHistory, ... }
                 const props =
                     data && typeof data === 'object' && !Array.isArray(data)
                         ? (data as Record<string, unknown>)
@@ -54,7 +57,7 @@ export class InertiaInterceptor implements NestInterceptor {
 
                 const renderOptions: RenderOptions = {
                     ...metadata.options,
-                    props: props as Record<string, unknown>,
+                    props,
                 };
 
                 return from(
@@ -63,6 +66,10 @@ export class InertiaInterceptor implements NestInterceptor {
                         res,
                         metadata.component,
                         renderOptions,
+                    ),
+                ).pipe(
+                    switchMap(() =>
+                        throwError(() => new InertiaResponseHandledException()),
                     ),
                 );
             }),

@@ -54,3 +54,20 @@ export {
     INERTIA_ENCRYPT_HISTORY_HEADER,
     INERTIA_CLEAR_HISTORY_HEADER,
 } from './common/inertia.constants';
+
+// Testing
+export {
+    assertInertia,
+    assertInertiaLocation,
+    InertiaPageAssert,
+} from './testing';
+
+// SSR
+export { SsrGateway, SSR_GATEWAY } from './ssr/ssr-gateway.interface';
+export { SsrResponse } from './ssr/ssr-response';
+export { SsrOptions } from './ssr/ssr-options';
+export { BundleDetector } from './ssr/bundle-detector';
+export { HttpGateway } from './ssr/http-gateway';
+
+export { InertiaResponseHandledException } from './common/inertia-response-handled.exception';
+export { InertiaResponseHandledFilter } from './common/inertia-response-handled.filter';

@@ -5,11 +5,14 @@ import {
     ModuleMetadata,
     Provider,
 } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
-import { InertiaService } from '../services/inertia.service';
+import { APP_FILTER, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
+import { InertiaModuleOptions } from '../common/inertia.interfaces';
 import { InertiaInterceptor } from '../interceptors/inertia.interceptor';
 import { HandleInertiaRequests } from '../middleware/handle-inertia-requests.middleware';
-import { InertiaModuleOptions } from '../common/inertia.interfaces';
+import { InertiaResponseHandledFilter } from '../common/inertia-response-handled.filter';
+import { InertiaService } from '../services/inertia.service';
+import { HttpGateway } from '../ssr/http-gateway';
+import { SSR_GATEWAY, SsrGateway } from '../ssr/ssr-gateway.interface';
 
 export const INERTIA_MODULE_OPTIONS = 'INERTIA_MODULE_OPTIONS';
 
@@ -23,60 +26,50 @@ export interface InertiaModuleAsyncOptions extends Pick<
     inject?: FactoryProvider['inject'];
 }
 
-/**
- * InertiaModule
- *
- * Register this module once in your root AppModule.
- *
- * @example
- * // Static configuration
- * \@Module({
- *   imports: [
- *     InertiaModule.forRoot({
- *       rootView: 'app',
- *       version: '1.0.0',
- *       sharedProps: {
- *         appName: 'My App',
- *       },
- *     }),
- *   ],
- * })
- * export class AppModule {}
- *
- * @example
- * // Async configuration
- * \@Module({
- *   imports: [
- *     InertiaModule.forRootAsync({
- *       imports: [ConfigModule],
- *       useFactory: (config: ConfigService) => ({
- *         version: config.get('ASSET_VERSION'),
- *       }),
- *       inject: [ConfigService],
- *     }),
- *   ],
- * })
- * export class AppModule {}
- */
+function buildSsrProvider(options: InertiaModuleOptions): Provider | null {
+    if (!options.ssr) return null;
+
+    return {
+        provide: SSR_GATEWAY,
+        useFactory: () => new HttpGateway(options.ssr!),
+    };
+}
+
 @Module({})
 export class InertiaModule {
     static forRoot(options: InertiaModuleOptions = {}): DynamicModule {
+        const ssrProvider = buildSsrProvider(options);
+
         const providers: Provider[] = [
             {
                 provide: INERTIA_MODULE_OPTIONS,
                 useValue: options,
             },
+            ...(ssrProvider ? [ssrProvider] : []),
             {
                 provide: InertiaService,
-                useFactory: (opts: InertiaModuleOptions) =>
-                    new InertiaService(opts),
-                inject: [INERTIA_MODULE_OPTIONS],
+                useFactory: (
+                    opts: InertiaModuleOptions,
+                    gateway?: SsrGateway,
+                ) => new InertiaService(opts, gateway),
+                inject: [
+                    INERTIA_MODULE_OPTIONS,
+                    ...(ssrProvider ? [SSR_GATEWAY] : []),
+                ],
             },
             {
                 provide: InertiaInterceptor,
                 useFactory: (inertia: InertiaService, reflector: Reflector) =>
                     new InertiaInterceptor(inertia, reflector),
                 inject: [InertiaService, Reflector],
+            },
+            {
+                provide: APP_INTERCEPTOR,
+                useExisting: InertiaInterceptor,
+            },
+            {
+                provide: APP_FILTER,
+                useClass: InertiaResponseHandledFilter,
             },
             HandleInertiaRequests,
         ];
@@ -89,6 +82,7 @@ export class InertiaModule {
                 InertiaService,
                 InertiaInterceptor,
                 HandleInertiaRequests,
+                ...(ssrProvider ? [SSR_GATEWAY] : []),
             ],
         };
     }
@@ -101,16 +95,32 @@ export class InertiaModule {
                 inject: options.inject ?? [],
             },
             {
-                provide: InertiaService,
+                provide: SSR_GATEWAY,
                 useFactory: (opts: InertiaModuleOptions) =>
-                    new InertiaService(opts),
+                    opts.ssr ? new HttpGateway(opts.ssr) : null,
                 inject: [INERTIA_MODULE_OPTIONS],
+            },
+            {
+                provide: InertiaService,
+                useFactory: (
+                    opts: InertiaModuleOptions,
+                    gateway: SsrGateway | null,
+                ) => new InertiaService(opts, gateway ?? undefined),
+                inject: [INERTIA_MODULE_OPTIONS, SSR_GATEWAY],
             },
             {
                 provide: InertiaInterceptor,
                 useFactory: (inertia: InertiaService, reflector: Reflector) =>
                     new InertiaInterceptor(inertia, reflector),
                 inject: [InertiaService, Reflector],
+            },
+            {
+                provide: APP_INTERCEPTOR,
+                useExisting: InertiaInterceptor,
+            },
+            {
+                provide: APP_FILTER,
+                useClass: InertiaResponseHandledFilter,
             },
             HandleInertiaRequests,
         ];
@@ -124,6 +134,7 @@ export class InertiaModule {
                 InertiaService,
                 InertiaInterceptor,
                 HandleInertiaRequests,
+                SSR_GATEWAY,
             ],
         };
     }

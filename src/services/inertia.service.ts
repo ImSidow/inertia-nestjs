@@ -1,4 +1,4 @@
-import { Injectable, Scope } from '@nestjs/common';
+import { Inject, Injectable, Optional, Scope } from '@nestjs/common';
 import {
     HttpRequestLike,
     HttpResponseLike,
@@ -12,17 +12,14 @@ import {
     RenderOptions,
 } from '../common/inertia.interfaces';
 import {
-    INERTIA_CLEAR_HISTORY_HEADER,
-    INERTIA_ENCRYPT_HISTORY_HEADER,
-    INERTIA_ERROR_BAG_HEADER,
     INERTIA_HEADER,
     INERTIA_LOCATION_HEADER,
     INERTIA_PARTIAL_COMPONENT_HEADER,
     INERTIA_PARTIAL_DATA_HEADER,
     INERTIA_PARTIAL_EXCEPT_HEADER,
-    INERTIA_VERSION_HEADER,
 } from '../common/inertia.constants';
 import { isAlways, isDefer, isLazy, isMerge } from '../common/inertia.props';
+import { SSR_GATEWAY, SsrGateway } from '../ssr/ssr-gateway.interface';
 
 /**
  * Core Inertia service.
@@ -37,14 +34,18 @@ export class InertiaService {
     private version: string | (() => string | Promise<string>);
     private encryptHistory: boolean;
 
-    constructor(private readonly options: InertiaModuleOptions) {
+    constructor(
+        private readonly options: InertiaModuleOptions,
+        @Optional()
+        @Inject(SSR_GATEWAY)
+        private readonly ssrGateway?: SsrGateway,
+    ) {
         this.rootView = options.rootView ?? 'app';
         this.version = options.version ?? '';
         this.encryptHistory = options.encryptHistory ?? false;
 
         if (options.sharedProps) {
             if (typeof options.sharedProps === 'function') {
-                // lazy shared props factory
                 this.share('__factory__', options.sharedProps as PropValue);
             } else {
                 Object.entries(options.sharedProps).forEach(([key, value]) => {
@@ -54,76 +55,34 @@ export class InertiaService {
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // Sharing
-    // ---------------------------------------------------------------------------
-
-    /**
-     * Share a prop with all Inertia responses.
-     *
-     * Equivalent to `Inertia::share()` in Laravel.
-     *
-     * @example
-     * inertia.share('auth', () => ({ user: request.user }));
-     */
     share(key: string, value: PropValue): this {
         this.sharedProps[key] = value;
         return this;
     }
 
-    /**
-     * Retrieve a specific shared prop by dot-notation key.
-     *
-     * Equivalent to `Inertia::getShared()` in Laravel.
-     */
     getShared(key?: string): Record<string, PropValue> | PropValue | undefined {
         if (!key) return this.sharedProps;
         return this.sharedProps[key];
     }
 
-    /**
-     * Flush / clear all shared props.
-     *
-     * Equivalent to `Inertia::flushShared()` in Laravel.
-     */
     flushShared(): this {
         this.sharedProps = {};
         return this;
     }
 
-    // ---------------------------------------------------------------------------
-    // Version
-    // ---------------------------------------------------------------------------
-
-    /**
-     * Set the current asset version.
-     *
-     * Equivalent to `Inertia::version()` in Laravel.
-     */
     setVersion(version: string | (() => string | Promise<string>)): this {
         this.version = version;
         return this;
     }
 
-    /**
-     * Resolve the current asset version.
-     */
     async getVersion(): Promise<string> {
         if (typeof this.version === 'function') {
             return String(await this.version());
         }
+
         return String(this.version ?? '');
     }
 
-    // ---------------------------------------------------------------------------
-    // Root view
-    // ---------------------------------------------------------------------------
-
-    /**
-     * Set the root HTML template/view name.
-     *
-     * Equivalent to `Inertia::setRootView()` in Laravel.
-     */
     setRootView(rootView: string): this {
         this.rootView = rootView;
         return this;
@@ -133,72 +92,37 @@ export class InertiaService {
         return this.rootView;
     }
 
-    // ---------------------------------------------------------------------------
-    // Rendering
-    // ---------------------------------------------------------------------------
-
-    /**
-     * Render an Inertia response.
-     *
-     * Equivalent to `Inertia::render()` in Laravel.
-     *
-     * @param req      - Incoming HTTP request
-     * @param res      - Outgoing HTTP response
-     * @param component - The client-side component name (e.g. 'Users/Index')
-     * @param options  - Props and page options
-     */
-    async render(
-        req: HttpRequestLike,
-        res: HttpResponseLike,
+    async buildPage<TRequest extends HttpRequestLike = HttpRequestLike>(
+        req: TRequest,
         component: string,
         options: RenderOptions = {},
-    ): Promise<void> {
-        const responseState = res as HttpResponseLike & {
-            headersSent?: boolean;
-            __inertiaHandled?: boolean;
-        };
-
-        if (responseState.headersSent || responseState.__inertiaHandled) {
-            return;
-        }
-
-        responseState.__inertiaHandled = true;
-
+    ): Promise<InertiaPage> {
         const { props = {}, encryptHistory, clearHistory } = options;
 
         const isInertiaRequest = !!inertiaHttpAdapter.getHeader(
             req,
             INERTIA_HEADER,
         );
-
         const partialComponent = inertiaHttpAdapter.getHeader(
             req,
             INERTIA_PARTIAL_COMPONENT_HEADER,
         );
         const isPartial = isInertiaRequest && partialComponent === component;
 
-        // Resolve which props to include
+        const combinedProps = { ...this.sharedProps, ...props };
+
         const resolvedProps = await this.resolveProps(
-            { ...this.sharedProps, ...props },
+            combinedProps,
             isPartial,
             isPartial ? this.parsePartialData(req) : undefined,
             isPartial ? this.parsePartialExcept(req) : undefined,
         );
 
         const currentVersion = await this.getVersion();
+        const deferredProps = this.buildDeferredGroups(combinedProps);
+        const mergeProps = this.buildMergeList(combinedProps);
 
-        // Build deferred props metadata (groups)
-        const deferredProps = this.buildDeferredGroups({
-            ...this.sharedProps,
-            ...props,
-        });
-        // Build merge props list
-        const mergeProps = this.buildMergeList({
-            ...this.sharedProps,
-            ...props,
-        });
-
-        const page: InertiaPage = {
+        return {
             component,
             props: resolvedProps,
             url: inertiaHttpAdapter.getRequestUrl(req),
@@ -212,6 +136,16 @@ export class InertiaService {
             ...(Object.keys(deferredProps).length ? { deferredProps } : {}),
             ...(mergeProps.length ? { mergeProps } : {}),
         };
+    }
+
+    async respond<
+        TRequest extends HttpRequestLike = HttpRequestLike,
+        TResponse extends HttpResponseLike = HttpResponseLike,
+    >(req: TRequest, res: TResponse, page: InertiaPage): Promise<void> {
+        const isInertiaRequest = !!inertiaHttpAdapter.getHeader(
+            req,
+            INERTIA_HEADER,
+        );
 
         if (isInertiaRequest) {
             inertiaHttpAdapter.setStatus(res, 200);
@@ -223,21 +157,49 @@ export class InertiaService {
             inertiaHttpAdapter.setHeader(res, 'Vary', 'X-Inertia');
             inertiaHttpAdapter.setHeader(res, INERTIA_HEADER, 'true');
             inertiaHttpAdapter.json(res, page);
-        } else {
-            await inertiaHttpAdapter.renderAsync(res, this.rootView, { page });
+            return;
         }
+
+        const ssrResponse = this.ssrGateway
+            ? await this.ssrGateway.dispatch(page)
+            : null;
+
+        await inertiaHttpAdapter.renderAsync(res, this.rootView, {
+            page,
+            ssrHead: ssrResponse?.head ?? [],
+            ssrBody: ssrResponse?.body ?? null,
+        });
     }
 
-    // ---------------------------------------------------------------------------
-    // Location (external redirect)
-    // ---------------------------------------------------------------------------
+    async render<
+        TRequest extends HttpRequestLike = HttpRequestLike,
+        TResponse extends HttpResponseLike = HttpResponseLike,
+    >(
+        req: TRequest,
+        res: TResponse,
+        component: string,
+        options: RenderOptions = {},
+    ): Promise<void> {
+        const responseState = res as TResponse & {
+            headersSent?: boolean;
+            __inertiaHandled?: boolean;
+        };
 
-    /**
-     * Redirect to an external URL (or force a full page visit).
-     *
-     * Equivalent to `Inertia::location()` in Laravel.
-     */
-    location(res: HttpResponseLike, url: string): void {
+        if (responseState.headersSent || responseState.__inertiaHandled) {
+            return;
+        }
+
+        responseState.__inertiaHandled = true;
+
+        const page = await this.buildPage(req, component, options);
+
+        await this.respond(req, res, page);
+    }
+
+    location<TResponse extends HttpResponseLike = HttpResponseLike>(
+        res: TResponse,
+        url: string,
+    ): void {
         const isInertiaRequest = inertiaHttpAdapter.getHeaderFromResponse(
             res,
             INERTIA_HEADER,
@@ -251,10 +213,6 @@ export class InertiaService {
             inertiaHttpAdapter.redirect(res, 302, url);
         }
     }
-
-    // ---------------------------------------------------------------------------
-    // Private helpers
-    // ---------------------------------------------------------------------------
 
     private parsePartialData(req: HttpRequestLike): string[] {
         const header = inertiaHttpAdapter.getHeader(
@@ -272,9 +230,6 @@ export class InertiaService {
         return header ? header.split(',').map((s) => s.trim()) : [];
     }
 
-    /**
-     * Resolve props, evaluating lazy/always/defer/merge factories.
-     */
     private async resolveProps(
         props: Record<string, PropValue>,
         isPartial: boolean,
@@ -284,7 +239,6 @@ export class InertiaService {
         const resolved: InertiaProps = {};
 
         for (const [key, value] of Object.entries(props)) {
-            // Internal factory key — expand it
             if (key === '__factory__' && typeof value === 'function') {
                 const factoryResult = await (
                     value as () => Promise<InertiaProps>
@@ -293,12 +247,10 @@ export class InertiaService {
                 continue;
             }
 
-            // Skip deferred props on initial load
             if (!isPartial && isDefer(value)) {
                 continue;
             }
 
-            // Lazy props: only evaluate if requested in partial reload
             if (isLazy(value)) {
                 if (!isPartial) continue;
                 if (only && only.length && !only.includes(key)) continue;
@@ -307,10 +259,8 @@ export class InertiaService {
                 continue;
             }
 
-            // Always props: evaluate on every request, included even in partial reloads
             if (isAlways(value)) {
                 if (only && only.length && !only.includes(key)) {
-                    // still skip if not in 'only' list during partial reload
                     if (isPartial) continue;
                 }
                 if (except && except.includes(key)) continue;
@@ -318,7 +268,6 @@ export class InertiaService {
                 continue;
             }
 
-            // Merge props: evaluate and include
             if (isMerge(value)) {
                 if (isPartial) {
                     if (only && only.length && !only.includes(key)) continue;
@@ -328,7 +277,6 @@ export class InertiaService {
                 continue;
             }
 
-            // Deferred props on partial reload
             if (isDefer(value)) {
                 if (only && only.length && !only.includes(key)) continue;
                 if (except && except.includes(key)) continue;
@@ -336,7 +284,6 @@ export class InertiaService {
                 continue;
             }
 
-            // Plain values and plain (non-lazy) functions
             if (isPartial) {
                 if (only && only.length && !only.includes(key)) continue;
                 if (except && except.includes(key)) continue;
@@ -352,9 +299,6 @@ export class InertiaService {
         return resolved;
     }
 
-    /**
-     * Build deferred prop groups metadata.
-     */
     private buildDeferredGroups(
         props: Record<string, PropValue>,
     ): Record<string, string[]> {
@@ -371,9 +315,6 @@ export class InertiaService {
         return groups;
     }
 
-    /**
-     * Build list of merge prop keys.
-     */
     private buildMergeList(props: Record<string, PropValue>): string[] {
         return Object.entries(props)
             .filter(([, value]) => isMerge(value))

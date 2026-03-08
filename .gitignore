@@ -6,3 +6,6 @@ coverage
 # macOS
 .DS_Store
 **/.DS_Store
+
+*.tgz
+npm-debug.log*
