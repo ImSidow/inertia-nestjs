@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+*.log
+
+# macOS
+.DS_Store
+**/.DS_Store
