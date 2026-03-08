@@ -69,41 +69,34 @@ Inertia requires a root HTML template that embeds the serialized page object.
 
 ### Handlebars (`views/app.hbs`)
 
-```
+```html
 <!DOCTYPE html>
 <html>
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<title>My App</title>
+        <title>My App</title>
 
-<link rel="stylesheet" href="/build/app.css" />
-<script type="module" src="/build/app.js" defer></script>
+        <link rel="stylesheet" href="/build/app.css" />
+        <script type="module" src="/build/app.js" defer></script>
 
-{{#each ssrHead}}
-  {{{this}}}
-{{/each}}
+        {{#each ssrHead}} {{{this}}} {{/each}}
+    </head>
 
-</head>
-
-<body>
-
-{{#if ssrBody}}
-<div id="app" data-page="{{{json page}}}">
-  {{{ssrBody}}}
-</div>
-{{else}}
-<div id="app" data-page="{{{json page}}}"></div>
-{{/if}}
-
-</body>
+    <body>
+        {{#if ssrBody}}
+        <div id="app" data-page="{{{json page}}}">{{{ssrBody}}}</div>
+        {{else}}
+        <div id="app" data-page="{{{json page}}}"></div>
+        {{/if}}
+    </body>
 </html>
 ```
 
 ### EJS (`views/app.ejs`)
 
-```
+```html
 <div id="app" data-page="<%- JSON.stringify(page) %>"></div>
 ```
 
@@ -113,14 +106,13 @@ Inertia requires a root HTML template that embeds the serialized page object.
 
 ## Using the `@Inertia()` decorator
 
-```
+```ts
 import { Controller, Get, Param } from '@nestjs/common';
 import { Inertia } from 'inertia-nestjs';
 import { UsersService } from './users.service';
 
 @Controller('users')
 export class UsersController {
-
     constructor(private readonly users: UsersService) {}
 
     @Get()
@@ -147,26 +139,24 @@ export class UsersController {
 
 You may render pages manually if you need full control.
 
-```
+```ts
 import { Controller, Get, Req, Res } from '@nestjs/common';
 import { InertiaService } from 'inertia-nestjs';
 import { Request, Response } from 'express';
 
 @Controller('dashboard')
 export class DashboardController {
+    constructor(private readonly inertia: InertiaService) {}
 
-  constructor(private readonly inertia: InertiaService) {}
-
-  @Get()
-  async index(@Req() req: Request, @Res() res: Response) {
-    return this.inertia.render(req, res, 'Dashboard', {
-      props: {
-        stats: await this.getStats(),
-      },
-      encryptHistory: true,
-    });
-  }
-
+    @Get()
+    async index(@Req() req: Request, @Res() res: Response) {
+        return this.inertia.render(req, res, 'Dashboard', {
+            props: {
+                stats: await this.getStats(),
+            },
+            encryptHistory: true,
+        });
+    }
 }
 ```
 
@@ -178,11 +168,11 @@ Share data with **all Inertia pages** (for example auth user or flash messages).
 
 ## Option A — in `InertiaModule.forRoot()`
 
-```
+```ts
 InertiaModule.forRoot({
-  sharedProps: {
-    appName: 'My App',
-  },
+    sharedProps: {
+        appName: 'My App',
+    },
 });
 ```
 
@@ -192,42 +182,41 @@ InertiaModule.forRoot({
 
 Recommended for **per-request data**.
 
-```
+```ts
 import { Injectable } from '@nestjs/common';
 import { HandleInertiaRequests, InertiaService } from 'inertia-nestjs';
 import { Request } from 'express';
 
 @Injectable()
 export class CustomInertiaMiddleware extends HandleInertiaRequests {
+    constructor(inertia: InertiaService) {
+        super(inertia);
+    }
 
-  constructor(inertia: InertiaService) {
-    super(inertia);
-  }
+    async share(req: Request) {
+        return {
+            ...(await super.share(req)),
 
-  async share(req: Request) {
-    return {
-      ...(await super.share(req)),
+            auth: {
+                user: (req as any).user
+                    ? {
+                          id: (req as any).user.id,
+                          name: (req as any).user.name,
+                      }
+                    : null,
+            },
 
-      auth: {
-        user: (req as any).user
-          ? {
-              id: (req as any).user.id,
-              name: (req as any).user.name,
-            }
-          : null,
-      },
-
-      flash: {
-        message: (req.session as any)?.flash,
-      },
-    };
-  }
+            flash: {
+                message: (req.session as any)?.flash,
+            },
+        };
+    }
 }
 ```
 
 Register it:
 
-```
+```ts
 consumer.apply(CustomInertiaMiddleware).forRoutes('*');
 ```
 
@@ -237,7 +226,7 @@ consumer.apply(CustomInertiaMiddleware).forRoutes('*');
 
 Lazy props are evaluated **only when explicitly requested during partial reloads**.
 
-```
+```ts
 import { lazy } from 'inertia-nestjs';
 
 @Get()
@@ -256,11 +245,11 @@ async index() {
 
 Always props are included on **every request**, even if not requested.
 
-```
+```ts
 import { always } from 'inertia-nestjs';
 
 return {
-  auth: always(() => ({ user: req.user })),
+    auth: always(() => ({ user: req.user })),
 };
 ```
 
@@ -270,7 +259,7 @@ return {
 
 Deferred props are sent **after the initial page render**.
 
-```
+```ts
 import { defer } from 'inertia-nestjs';
 
 @Get()
@@ -290,7 +279,7 @@ async show() {
 
 Merge props allow the client to **merge new data with existing state**.
 
-```
+```ts
 import { merge } from 'inertia-nestjs';
 
 @Get()
@@ -308,16 +297,16 @@ async index() {
 
 Force a full reload when assets change.
 
-```
+```ts
 InertiaModule.forRoot({
-  version: '1.2.3',
+    version: '1.2.3',
 });
 ```
 
 Dynamic version example:
 
-```
-version: () => readFileSync('public/build/manifest.json').toString()
+```ts
+version: () => readFileSync('public/build/manifest.json').toString();
 ```
 
 ---
@@ -326,7 +315,7 @@ version: () => readFileSync('public/build/manifest.json').toString()
 
 To redirect outside the SPA:
 
-```
+```ts
 @Post('logout')
 async logout(@Res() res: Response) {
   this.inertia.location(res, 'https://example.com');
@@ -339,7 +328,7 @@ async logout(@Res() res: Response) {
 
 Encrypt a page's browser history entry.
 
-```
+```ts
 @Inertia('Payments/New', { encryptHistory: true })
 newPayment() {}
 ```
@@ -352,16 +341,16 @@ newPayment() {}
 
 Enable SSR:
 
-```
+```ts
 InertiaModule.forRoot({
-  rootView: 'app',
-  version: '1.0.0',
+    rootView: 'app',
+    version: '1.0.0',
 
-  ssr: {
-    enabled: true,
-    url: 'http://127.0.0.1:13714',
-    bundlePath: 'bootstrap/ssr/ssr.js',
-  },
+    ssr: {
+        enabled: true,
+        url: 'http://127.0.0.1:13714',
+        bundlePath: 'bootstrap/ssr/ssr.js',
+    },
 });
 ```
 
@@ -371,7 +360,7 @@ If the SSR server is unavailable or the bundle is missing, the adapter automatic
 
 # Example SSR Entry
 
-```
+```ts
 import { createInertiaApp } from '@inertiajs/react';
 import createServer from '@inertiajs/react/server';
 import ReactDOMServer from 'react-dom/server';
@@ -396,31 +385,31 @@ createServer(page =>
 
 # Testing
 
-```
+```ts
 import { assertInertia, assertInertiaLocation } from 'inertia-nestjs';
 import * as request from 'supertest';
 
 it('returns users page', async () => {
-  const res = await request(app.getHttpServer())
-    .get('/users')
-    .set('X-Inertia', 'true')
-    .set('X-Inertia-Version', '1.0.0')
-    .expect(200);
+    const res = await request(app.getHttpServer())
+        .get('/users')
+        .set('X-Inertia', 'true')
+        .set('X-Inertia-Version', '1.0.0')
+        .expect(200);
 
-  assertInertia(res.body, page => {
-    page.component('Users/Index')
-      .has('users')
-      .where('users[0].name', 'Alice');
-  });
+    assertInertia(res.body, (page) => {
+        page.component('Users/Index')
+            .has('users')
+            .where('users[0].name', 'Alice');
+    });
 });
 
 it('redirects to external URL', async () => {
-  const res = await request(app.getHttpServer())
-    .post('/logout')
-    .set('X-Inertia', 'true')
-    .expect(409);
+    const res = await request(app.getHttpServer())
+        .post('/logout')
+        .set('X-Inertia', 'true')
+        .expect(409);
 
-  assertInertiaLocation(res.headers, 'https://example.com');
+    assertInertiaLocation(res.headers, 'https://example.com');
 });
 ```
 
