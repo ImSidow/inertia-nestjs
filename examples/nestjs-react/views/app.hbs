@@ -1,0 +1,20 @@
+<html lang='en'>
+  <head>
+    <meta charset='UTF-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+    <title>NestJS React Example</title>
+
+    {{#each ssrHead}}
+      {{{this}}}
+    {{/each}}
+
+    <script type='module' src='/build/app.js'></script>
+  </head>
+  <body>
+    {{#if ssrBody}}
+      <div id='app' data-page='{{{json page}}}'>{{{ssrBody}}}</div>
+    {{else}}
+      <div id='app' data-page='{{{json page}}}'></div>
+    {{/if}}
+  </body>
+</html>
