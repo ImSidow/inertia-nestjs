@@ -3,7 +3,7 @@ import {
     assertInertia,
     assertInertiaLocation,
     InertiaPageAssert,
-} from 'src/testing/inertia-page-assert';
+} from '../src/testing';
 
 const basePage: InertiaPage = {
     component: 'Users/Index',

@@ -190,11 +190,41 @@ function makeReq(overrides: Record<string, unknown> = {}) {
 function makeRes() {
     const headers = new Map<string, string>();
 
+    const json = jest.fn();
+    const send = jest.fn();
+    const end = jest.fn();
+    const redirect = jest.fn();
+
+    const appRender = jest
+        .fn()
+        .mockImplementation(
+            (
+                _view: string,
+                options: Record<string, unknown>,
+                callback: (err: Error | null, html?: string) => void,
+            ) => {
+                const html = `
+<!DOCTYPE html>
+<html>
+<head>${((options.ssrHead as string[]) ?? []).join('')}</head>
+<body>
+<div id="app" data-page='${JSON.stringify(options.page)}'>${options.ssrBody ?? ''}</div>
+</body>
+</html>
+            `.trim();
+
+                callback(null, html);
+            },
+        );
+
     const res: {
         headersSent: boolean;
         statusCode?: number;
-        render: jest.Mock;
+        app: {
+            render: jest.Mock;
+        };
         json: jest.Mock;
+        send: jest.Mock;
         end: jest.Mock;
         redirect: jest.Mock;
         status: jest.Mock;
@@ -202,10 +232,13 @@ function makeRes() {
         getHeader: jest.Mock;
     } = {
         headersSent: false,
-        render: jest.fn().mockResolvedValue(undefined),
-        json: jest.fn(),
-        end: jest.fn(),
-        redirect: jest.fn(),
+        app: {
+            render: appRender,
+        },
+        json,
+        send,
+        end,
+        redirect,
         status: jest.fn(),
         setHeader: jest.fn(),
         getHeader: jest.fn(),
@@ -225,15 +258,21 @@ function makeRes() {
         return headers.get(String(key).toLowerCase());
     });
 
+    res.send.mockImplementation((_body?: unknown) => {
+        res.headersSent = true;
+        return res;
+    });
+
     return {
         res: res as never,
-        render: res.render,
-        json: res.json,
+        appRender,
+        json,
+        send,
     };
 }
 
 describe('InertiaService with SSR gateway', () => {
-    it('passes ssrHead and ssrBody to render when gateway returns a response', async () => {
+    it('passes ssrHead and ssrBody to app.render when gateway returns a response', async () => {
         const mockGateway: SsrGateway = {
             dispatch: jest.fn().mockResolvedValue({
                 head: ['<title>SSR Title</title>'],
@@ -243,38 +282,55 @@ describe('InertiaService with SSR gateway', () => {
 
         const service = new InertiaService({ rootView: 'app' }, mockGateway);
         const req = makeReq();
-        const { res, render } = makeRes();
+        const { res, appRender, send } = makeRes();
 
         await service.render(req, res, 'Home/Index');
 
-        expect(render).toHaveBeenCalledWith(
+        expect(appRender).toHaveBeenCalledWith(
             'app',
             expect.objectContaining({
+                page: expect.objectContaining({
+                    component: 'Home/Index',
+                }),
                 ssrHead: ['<title>SSR Title</title>'],
                 ssrBody: '<div id="app"><h1>SSR</h1></div>',
             }),
             expect.any(Function),
         );
+
+        expect(send).toHaveBeenCalledWith(
+            expect.stringContaining('<title>SSR Title</title>'),
+        );
+        expect(send).toHaveBeenCalledWith(
+            expect.stringContaining('<div id="app"><h1>SSR</h1></div>'),
+        );
     });
 
-    it('passes ssrHead=[] and ssrBody=null when gateway returns null', async () => {
+    it('passes ssrHead=[] and ssrBody=null to app.render when gateway returns null', async () => {
         const mockGateway: SsrGateway = {
             dispatch: jest.fn().mockResolvedValue(null),
         };
 
         const service = new InertiaService({ rootView: 'app' }, mockGateway);
         const req = makeReq();
-        const { res, render } = makeRes();
+        const { res, appRender, send } = makeRes();
 
         await service.render(req, res, 'Home/Index');
 
-        expect(render).toHaveBeenCalledWith(
+        expect(appRender).toHaveBeenCalledWith(
             'app',
             expect.objectContaining({
+                page: expect.objectContaining({
+                    component: 'Home/Index',
+                }),
                 ssrHead: [],
                 ssrBody: null,
             }),
             expect.any(Function),
+        );
+
+        expect(send).toHaveBeenCalledWith(
+            expect.stringContaining('"component":"Home/Index"'),
         );
     });
 
@@ -296,17 +352,24 @@ describe('InertiaService with SSR gateway', () => {
     it('works correctly with no gateway provided', async () => {
         const service = new InertiaService({ rootView: 'app' });
         const req = makeReq();
-        const { res, render } = makeRes();
+        const { res, appRender, send } = makeRes();
 
         await service.render(req, res, 'Home/Index');
 
-        expect(render).toHaveBeenCalledWith(
+        expect(appRender).toHaveBeenCalledWith(
             'app',
             expect.objectContaining({
+                page: expect.objectContaining({
+                    component: 'Home/Index',
+                }),
                 ssrHead: [],
                 ssrBody: null,
             }),
             expect.any(Function),
+        );
+
+        expect(send).toHaveBeenCalledWith(
+            expect.stringContaining('"component":"Home/Index"'),
         );
     });
 });
