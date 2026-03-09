@@ -1,6 +1,6 @@
 {
     "name": "inertia-nestjs",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "description": "Platform-agnostic NestJS adapter for Inertia.js",
     "license": "MIT",
     "keywords": [
