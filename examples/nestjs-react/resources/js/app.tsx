@@ -1,9 +1,18 @@
+import type { ComponentType } from 'react';
 import { createInertiaApp } from '@inertiajs/react';
 import { createRoot } from 'react-dom/client';
 
+type PageModule = {
+  default: ComponentType<Record<string, unknown>>;
+};
+
+const appName = 'NestJS React Example';
+const pages = import.meta.glob<PageModule>('./pages/**/*.tsx');
+
 void createInertiaApp({
+  title: (title) => (title ? `${title} - ${appName}` : appName),
+
   resolve: async (name) => {
-    const pages = import.meta.glob('./pages/**/*.tsx');
     const page = pages[`./pages/${name}.tsx`];
 
     if (!page) {
@@ -11,7 +20,7 @@ void createInertiaApp({
     }
 
     const module = await page();
-    return (module as { default: React.ComponentType }).default;
+    return module.default;
   },
 
   setup({ el, App, props }) {

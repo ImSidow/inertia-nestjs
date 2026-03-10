@@ -1,4 +1,4 @@
-import { Link } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 
 type User = {
   id: number;
@@ -12,6 +12,8 @@ type UsersPageProps = {
 export default function UsersIndex({ users }: UsersPageProps) {
   return (
     <main style={{ padding: 40, fontFamily: 'sans-serif' }}>
+      <Head title="Users" />
+
       <h1>Users</h1>
       <ul>
         {users.map((user) => (
