@@ -97,7 +97,7 @@ export class InertiaService {
         component: string,
         options: RenderOptions = {},
     ): Promise<InertiaPage> {
-        const { props = {}, encryptHistory, clearHistory } = options;
+        const { props = {}, encryptHistory, clearHistory, url } = options;
 
         const isInertiaRequest = !!inertiaHttpAdapter.getHeader(
             req,
@@ -125,7 +125,7 @@ export class InertiaService {
         return {
             component,
             props: resolvedProps,
-            url: inertiaHttpAdapter.getRequestUrl(req),
+            url: url ?? inertiaHttpAdapter.getRequestUrl(req),
             version: currentVersion,
             ...(encryptHistory !== undefined
                 ? { encryptHistory }
@@ -141,14 +141,14 @@ export class InertiaService {
     async respond<
         TRequest extends HttpRequestLike = HttpRequestLike,
         TResponse extends HttpResponseLike = HttpResponseLike,
-    >(req: TRequest, res: TResponse, page: InertiaPage): Promise<void> {
+    >(req: TRequest, res: TResponse, page: InertiaPage, options: RenderOptions = {}): Promise<void> {
         const isInertiaRequest = !!inertiaHttpAdapter.getHeader(
             req,
             INERTIA_HEADER,
         );
 
         if (isInertiaRequest) {
-            inertiaHttpAdapter.setStatus(res, 200);
+            inertiaHttpAdapter.setStatus(res, options.status ?? 200);
             inertiaHttpAdapter.setHeader(
                 res,
                 'Content-Type',
@@ -193,7 +193,7 @@ export class InertiaService {
 
         const page = await this.buildPage(req, component, options);
 
-        await this.respond(req, res, page);
+        await this.respond(req, res, page, options);
     }
 
     location<TResponse extends HttpResponseLike = HttpResponseLike>(

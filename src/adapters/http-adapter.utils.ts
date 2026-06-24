@@ -26,6 +26,13 @@ export const inertiaHttpAdapter: InertiaHttpAdapter = {
     },
 
     getRequestUrl(req: HttpRequestLike): string {
+        const method = String(req.method ?? 'GET').toUpperCase();
+        if (method !== 'GET') {
+            const referer = asRecord(req.headers)['referer'];
+            if (referer) {
+                try { return new URL(String(referer)).pathname; } catch {}
+            }
+        }
         return String(req.originalUrl ?? req.url ?? '/');
     },
 

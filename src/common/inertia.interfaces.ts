@@ -75,6 +75,10 @@ export interface RenderOptions {
     encryptHistory?: boolean;
     /** Clear all history entries before this page */
     clearHistory?: boolean;
+    /** Override the URL sent in the Inertia page object (defaults to req.originalUrl) */
+    url?: string;
+    /** Override the HTTP status code (defaults to 200) */
+    status?: number;
 }
 
 /**

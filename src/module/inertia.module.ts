@@ -8,8 +8,10 @@ import {
 import { APP_FILTER, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 import { InertiaModuleOptions } from '../common/inertia.interfaces';
 import { InertiaInterceptor } from '../interceptors/inertia.interceptor';
+import { InertiaComponentInterceptor } from '../interceptors/inertia-component.interceptor';
 import { HandleInertiaRequests } from '../middleware/handle-inertia-requests.middleware';
 import { InertiaResponseHandledFilter } from '../common/inertia-response-handled.filter';
+import { InertiaValidationFilter } from '../filters/inertia-validation.filter';
 import { InertiaService } from '../services/inertia.service';
 import { HttpGateway } from '../ssr/http-gateway';
 import { SSR_GATEWAY, SsrGateway } from '../ssr/ssr-gateway.interface';
@@ -71,6 +73,24 @@ export class InertiaModule {
                 provide: APP_FILTER,
                 useClass: InertiaResponseHandledFilter,
             },
+            {
+                provide: InertiaComponentInterceptor,
+                useFactory: (reflector: Reflector) => new InertiaComponentInterceptor(reflector),
+                inject: [Reflector],
+            },
+            {
+                provide: APP_INTERCEPTOR,
+                useExisting: InertiaComponentInterceptor,
+            },
+            {
+                provide: InertiaValidationFilter,
+                useFactory: (inertia: InertiaService) => new InertiaValidationFilter(inertia),
+                inject: [InertiaService],
+            },
+            {
+                provide: APP_FILTER,
+                useExisting: InertiaValidationFilter,
+            },
             HandleInertiaRequests,
         ];
 
@@ -81,6 +101,8 @@ export class InertiaModule {
             exports: [
                 InertiaService,
                 InertiaInterceptor,
+                InertiaComponentInterceptor,
+                InertiaValidationFilter,
                 HandleInertiaRequests,
                 ...(ssrProvider ? [SSR_GATEWAY] : []),
             ],
@@ -122,6 +144,24 @@ export class InertiaModule {
                 provide: APP_FILTER,
                 useClass: InertiaResponseHandledFilter,
             },
+            {
+                provide: InertiaComponentInterceptor,
+                useFactory: (reflector: Reflector) => new InertiaComponentInterceptor(reflector),
+                inject: [Reflector],
+            },
+            {
+                provide: APP_INTERCEPTOR,
+                useExisting: InertiaComponentInterceptor,
+            },
+            {
+                provide: InertiaValidationFilter,
+                useFactory: (inertia: InertiaService) => new InertiaValidationFilter(inertia),
+                inject: [InertiaService],
+            },
+            {
+                provide: APP_FILTER,
+                useExisting: InertiaValidationFilter,
+            },
             HandleInertiaRequests,
         ];
 
@@ -133,6 +173,8 @@ export class InertiaModule {
             exports: [
                 InertiaService,
                 InertiaInterceptor,
+                InertiaComponentInterceptor,
+                InertiaValidationFilter,
                 HandleInertiaRequests,
                 SSR_GATEWAY,
             ],
