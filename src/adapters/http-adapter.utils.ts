@@ -1,4 +1,4 @@
-import { InertiaHttpAdapter } from './http-adapter.interface';
+import { CookieOptions, InertiaHttpAdapter } from './http-adapter.interface';
 import { HttpRequestLike, HttpResponseLike } from './http-types';
 
 function normalizeHeaderName(name: string): string {
@@ -191,5 +191,18 @@ export const inertiaHttpAdapter: InertiaHttpAdapter = {
             res.send();
             return;
         }
+    },
+
+    setCookie(res: HttpResponseLike, name: string, value: string, options: CookieOptions = {}): void {
+        const parts: string[] = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`];
+        if (options.httpOnly) parts.push('HttpOnly');
+        if (options.sameSite) {
+            const s = options.sameSite;
+            parts.push(`SameSite=${s[0].toUpperCase() + s.slice(1)}`);
+        }
+        if (options.maxAge != null) parts.push(`Max-Age=${Math.floor(options.maxAge / 1000)}`);
+        if (options.path) parts.push(`Path=${options.path}`);
+        if (options.secure) parts.push('Secure');
+        this.setHeader(res, 'Set-Cookie', parts.join('; '));
     },
 };

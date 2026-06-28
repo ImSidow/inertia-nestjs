@@ -1,5 +1,13 @@
 import { HttpRequestLike, HttpResponseLike } from './http-types';
 
+export interface CookieOptions {
+    httpOnly?: boolean;
+    sameSite?: 'lax' | 'strict' | 'none';
+    maxAge?: number;
+    path?: string;
+    secure?: boolean;
+}
+
 export interface InertiaHttpAdapter {
     getHeader(req: HttpRequestLike, name: string): string | undefined;
     getRequestMethod(req: HttpRequestLike): string;
@@ -28,4 +36,5 @@ export interface InertiaHttpAdapter {
 
     redirect(res: HttpResponseLike, status: number, url: string): void;
     end(res: HttpResponseLike): void;
+    setCookie(res: HttpResponseLike, name: string, value: string, options?: CookieOptions): void;
 }

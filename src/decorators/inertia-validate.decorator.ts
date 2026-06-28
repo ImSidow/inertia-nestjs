@@ -1,6 +1,8 @@
 import { SetMetadata } from '@nestjs/common';
+import { INERTIA_VALIDATE_KEY, INERTIA_VALIDATE_REDIRECT_BACK } from '../common/inertia.constants';
 
-export const INERTIA_VALIDATE_KEY = 'inertia:validate:component';
+// Re-export for backward compatibility
+export { INERTIA_VALIDATE_KEY, INERTIA_VALIDATE_REDIRECT_BACK };
 
-export const InertiaValidate = (component: string) =>
-    SetMetadata(INERTIA_VALIDATE_KEY, component);
+export const InertiaValidate = (component?: string) =>
+    SetMetadata(INERTIA_VALIDATE_KEY, component ?? INERTIA_VALIDATE_REDIRECT_BACK);

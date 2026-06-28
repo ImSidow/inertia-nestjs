@@ -17,3 +17,12 @@ export const INERTIA_RENDER_KEY = 'inertia:render';
 
 /** Metadata key used to mark a route handler as an Inertia responder. */
 export const INERTIA_COMPONENT_KEY = 'inertia:component';
+
+/** Metadata key used by @InertiaValidate() to store the target component (or redirect-back sentinel). */
+export const INERTIA_VALIDATE_KEY = 'inertia:validate:component';
+
+/** Sentinel value for @InertiaValidate() meaning "redirect back with errors" instead of re-rendering a page. */
+export const INERTIA_VALIDATE_REDIRECT_BACK = '__redirectBack__';
+
+/** Metadata key used by @InertiaHandleException() to store which status codes to intercept and an optional return path. */
+export const INERTIA_HANDLE_EXCEPTION_KEY = 'inertia:handle:exception';

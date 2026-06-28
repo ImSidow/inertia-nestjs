@@ -17,10 +17,12 @@ export { InertiaInterceptor } from './interceptors/inertia.interceptor';
 // Decorators
 export { Inertia } from './decorators/inertia.decorator';
 export { InertiaValidate, INERTIA_VALIDATE_KEY } from './decorators/inertia-validate.decorator';
+export { InertiaHandleException, InertiaHandleExceptionOptions } from './decorators/inertia-handle-exception.decorator';
 
 // Validation (filter + interceptor — auto-registered by InertiaModule)
 export { InertiaValidationFilter } from './filters/inertia-validation.filter';
 export { InertiaComponentInterceptor } from './interceptors/inertia-component.interceptor';
+export { InertiaHandleExceptionInterceptor } from './interceptors/inertia-handle-exception.interceptor';
 
 // Prop helpers
 export {

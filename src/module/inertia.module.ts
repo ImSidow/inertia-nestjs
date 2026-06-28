@@ -9,6 +9,7 @@ import { APP_FILTER, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 import { InertiaModuleOptions } from '../common/inertia.interfaces';
 import { InertiaInterceptor } from '../interceptors/inertia.interceptor';
 import { InertiaComponentInterceptor } from '../interceptors/inertia-component.interceptor';
+import { InertiaHandleExceptionInterceptor } from '../interceptors/inertia-handle-exception.interceptor';
 import { HandleInertiaRequests } from '../middleware/handle-inertia-requests.middleware';
 import { InertiaResponseHandledFilter } from '../common/inertia-response-handled.filter';
 import { InertiaValidationFilter } from '../filters/inertia-validation.filter';
@@ -43,6 +44,7 @@ export class InertiaModule {
         const ssrProvider = buildSsrProvider(options);
 
         const providers: Provider[] = [
+            Reflector,
             {
                 provide: INERTIA_MODULE_OPTIONS,
                 useValue: options,
@@ -83,13 +85,18 @@ export class InertiaModule {
                 useExisting: InertiaComponentInterceptor,
             },
             {
+                provide: InertiaHandleExceptionInterceptor,
+                useFactory: (reflector: Reflector) => new InertiaHandleExceptionInterceptor(reflector),
+                inject: [Reflector],
+            },
+            {
+                provide: APP_INTERCEPTOR,
+                useExisting: InertiaHandleExceptionInterceptor,
+            },
+            {
                 provide: InertiaValidationFilter,
                 useFactory: (inertia: InertiaService) => new InertiaValidationFilter(inertia),
                 inject: [InertiaService],
-            },
-            {
-                provide: APP_FILTER,
-                useExisting: InertiaValidationFilter,
             },
             HandleInertiaRequests,
         ];
@@ -99,9 +106,11 @@ export class InertiaModule {
             global: true,
             providers,
             exports: [
+                Reflector,
                 InertiaService,
                 InertiaInterceptor,
                 InertiaComponentInterceptor,
+                InertiaHandleExceptionInterceptor,
                 InertiaValidationFilter,
                 HandleInertiaRequests,
                 ...(ssrProvider ? [SSR_GATEWAY] : []),
@@ -111,6 +120,7 @@ export class InertiaModule {
 
     static forRootAsync(options: InertiaModuleAsyncOptions): DynamicModule {
         const providers: Provider[] = [
+            Reflector,
             {
                 provide: INERTIA_MODULE_OPTIONS,
                 useFactory: options.useFactory,
@@ -154,13 +164,18 @@ export class InertiaModule {
                 useExisting: InertiaComponentInterceptor,
             },
             {
+                provide: InertiaHandleExceptionInterceptor,
+                useFactory: (reflector: Reflector) => new InertiaHandleExceptionInterceptor(reflector),
+                inject: [Reflector],
+            },
+            {
+                provide: APP_INTERCEPTOR,
+                useExisting: InertiaHandleExceptionInterceptor,
+            },
+            {
                 provide: InertiaValidationFilter,
                 useFactory: (inertia: InertiaService) => new InertiaValidationFilter(inertia),
                 inject: [InertiaService],
-            },
-            {
-                provide: APP_FILTER,
-                useExisting: InertiaValidationFilter,
             },
             HandleInertiaRequests,
         ];
@@ -171,9 +186,11 @@ export class InertiaModule {
             imports: options.imports ?? [],
             providers,
             exports: [
+                Reflector,
                 InertiaService,
                 InertiaInterceptor,
                 InertiaComponentInterceptor,
+                InertiaHandleExceptionInterceptor,
                 InertiaValidationFilter,
                 HandleInertiaRequests,
                 SSR_GATEWAY,

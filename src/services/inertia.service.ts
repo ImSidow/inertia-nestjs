@@ -109,7 +109,8 @@ export class InertiaService {
         );
         const isPartial = isInertiaRequest && partialComponent === component;
 
-        const combinedProps = { ...this.sharedProps, ...props };
+        const flash: Record<string, unknown> = (req as any).__inertiaFlash ?? {};
+        const combinedProps = { errors: {}, ...this.sharedProps, ...flash, ...props };
 
         const resolvedProps = await this.resolveProps(
             combinedProps,
@@ -194,6 +195,22 @@ export class InertiaService {
         const page = await this.buildPage(req, component, options);
 
         await this.respond(req, res, page, options);
+    }
+
+    redirectBack<
+        TRequest extends HttpRequestLike = HttpRequestLike,
+        TResponse extends HttpResponseLike = HttpResponseLike,
+    >(req: TRequest, res: TResponse, errors?: Record<string, string>, path?: string): void {
+        const referer = path ?? (inertiaHttpAdapter.getHeader(req, 'referer') ?? '/');
+        if (errors) {
+            inertiaHttpAdapter.setCookie(res, '__inertia_flash', JSON.stringify(errors), {
+                httpOnly: true,
+                sameSite: 'lax',
+                maxAge: 10_000,
+                path: '/',
+            });
+        }
+        inertiaHttpAdapter.redirect(res, 303, referer);
     }
 
     location<TResponse extends HttpResponseLike = HttpResponseLike>(

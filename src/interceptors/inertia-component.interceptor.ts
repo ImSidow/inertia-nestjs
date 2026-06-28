@@ -9,9 +9,9 @@ export class InertiaComponentInterceptor implements NestInterceptor {
     constructor(private readonly reflector: Reflector) {}
 
     intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-        const component = this.reflector.get<string>(INERTIA_VALIDATE_KEY, context.getHandler());
+        const component = this.reflector.get<string | undefined>(INERTIA_VALIDATE_KEY, context.getHandler());
 
-        if (component) {
+        if (component !== undefined) {
             const req = context.switchToHttp().getRequest<HttpRequestLike & { inertiaValidateComponent?: string }>();
             req.inertiaValidateComponent = component;
         }
