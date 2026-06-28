@@ -73,6 +73,7 @@ describe('InertiaService', () => {
         expect(page.url).toBe('/users');
         expect(page.version).toBe('1.0.0');
         expect(page.props).toEqual({
+            errors: {},
             appName: 'My App',
             users: [{ id: 1, name: 'Alice' }],
         });
@@ -133,6 +134,7 @@ describe('InertiaService', () => {
         );
 
         expect(page.props).toEqual({
+            errors: {},
             summary: 'Quick summary',
             posts: [{ id: 1 }],
         });
