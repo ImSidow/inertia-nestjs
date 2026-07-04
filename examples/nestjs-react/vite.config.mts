@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import inertia from '@inertiajs/vite';
 import path from 'node:path';
 
 export default defineConfig(({ isSsrBuild }) => ({
-  plugins: [react()],
+  plugins: [inertia(), react()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'resources/js'),

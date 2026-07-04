@@ -10,10 +10,12 @@
     <script type='module' src='/build/app.js'></script>
   </head>
   <body>
+    <script type='application/json' data-page='app'>{{{json page}}}</script>
+
     {{#if ssrBody}}
-      <div id='app' data-page='{{{json page}}}'>{{{ssrBody}}}</div>
+      <div id='app'>{{{ssrBody}}}</div>
     {{else}}
-      <div id='app' data-page='{{{json page}}}'></div>
+      <div id='app'></div>
     {{/if}}
   </body>
 </html>
