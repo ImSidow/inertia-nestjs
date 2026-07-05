@@ -76,6 +76,26 @@ Next steps:
        consumer.apply(HandleInertiaRequests).forRoutes('*');
      }
    }
+
+4. Install and wire up the Handlebars view engine (views/app.hbs needs it):
+   npm install hbs
+
+   In src/main.ts:
+     import { NestExpressApplication } from '@nestjs/platform-express';
+     import { join } from 'node:path';
+     import hbs from 'hbs';
+
+     const app = await NestFactory.create<NestExpressApplication>(AppModule);
+     app.setBaseViewsDir(join(process.cwd(), 'views'));
+     app.setViewEngine('hbs');
+     hbs.registerHelper('json', (value) => JSON.stringify(value));
+
+5. Exclude the frontend from the backend build — add to tsconfig.build.json:
+   "exclude": ["node_modules", "dist", "test", "**/*spec.ts", "resources", "vite.config.mts"]
+
+6. Optional — so UI-library CLIs (e.g. shadcn) can auto-detect the @ alias,
+   add to your root tsconfig.json compilerOptions:
+   "paths": { "@/*": ["./resources/js/*"] }
 `;
 
 function run(argv, cwd) {
