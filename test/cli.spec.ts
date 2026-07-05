@@ -50,6 +50,13 @@ describe('isNestProject', () => {
 
     expect(isNestProject(dir)).toBe(false);
   });
+
+  it('returns false when package.json is malformed JSON', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(path.join(dir, 'package.json'), '{ not valid json');
+
+    expect(isNestProject(dir)).toBe(false);
+  });
 });
 
 describe('copyTemplate', () => {

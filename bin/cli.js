@@ -8,7 +8,13 @@ function isNestProject(cwd) {
   const pkgPath = path.join(cwd, 'package.json');
   if (!fs.existsSync(pkgPath)) return false;
 
-  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  let pkg;
+  try {
+    pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  } catch {
+    return false;
+  }
+
   const deps = Object.assign({}, pkg.dependencies, pkg.devDependencies);
   return Boolean(deps['@nestjs/core']);
 }
@@ -77,7 +83,7 @@ Next steps:
      }
    }
 
-4. Install and wire up the Handlebars view engine (views/app.hbs needs it):
+4. Install and wire up the Handlebars view engine and static assets:
    npm install hbs
 
    In src/main.ts:
@@ -86,6 +92,7 @@ Next steps:
      import hbs from 'hbs';
 
      const app = await NestFactory.create<NestExpressApplication>(AppModule);
+     app.useStaticAssets(join(process.cwd(), 'public'));
      app.setBaseViewsDir(join(process.cwd(), 'views'));
      app.setViewEngine('hbs');
      hbs.registerHelper('json', (value) => JSON.stringify(value));
