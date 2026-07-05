@@ -2,12 +2,14 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-const { isNestProject, copyTemplate } = require('../bin/cli') as {
+const { isNestProject, copyTemplate, patchTsconfigBuildExclude, patchRootTsconfigAlias } = require('../bin/cli') as {
   isNestProject: (cwd: string) => boolean;
   copyTemplate: (
     templateDir: string,
     targetDir: string,
   ) => { created: string[]; skipped: string[] };
+  patchTsconfigBuildExclude: (cwd: string) => { file: string; status: string; additions?: string[] };
+  patchRootTsconfigAlias: (cwd: string) => { file: string; status: string };
 };
 
 function mkTempDir(): string {
@@ -90,5 +92,82 @@ describe('copyTemplate', () => {
     expect(result.created).toEqual(['nested/inner.txt']);
     expect(result.skipped).toEqual(['top.txt']);
     expect(fs.readFileSync(path.join(targetDir, 'top.txt'), 'utf8')).toBe('user content');
+  });
+});
+
+describe('patchTsconfigBuildExclude', () => {
+  it('adds resources and vite.config.mts to an existing exclude array', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(
+      path.join(dir, 'tsconfig.build.json'),
+      JSON.stringify({ extends: './tsconfig.json', exclude: ['node_modules', 'dist'] }),
+    );
+
+    const result = patchTsconfigBuildExclude(dir);
+
+    expect(result.status).toBe('patched');
+    const written = JSON.parse(fs.readFileSync(path.join(dir, 'tsconfig.build.json'), 'utf8'));
+    expect(written.exclude).toEqual(['node_modules', 'dist', 'resources', 'vite.config.mts']);
+  });
+
+  it('is idempotent — a second run reports already-present and does not duplicate entries', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(
+      path.join(dir, 'tsconfig.build.json'),
+      JSON.stringify({ exclude: ['node_modules', 'dist'] }),
+    );
+
+    patchTsconfigBuildExclude(dir);
+    const second = patchTsconfigBuildExclude(dir);
+
+    expect(second.status).toBe('already-present');
+    const written = JSON.parse(fs.readFileSync(path.join(dir, 'tsconfig.build.json'), 'utf8'));
+    expect(written.exclude).toEqual(['node_modules', 'dist', 'resources', 'vite.config.mts']);
+  });
+
+  it('reports missing when tsconfig.build.json does not exist', () => {
+    const dir = mkTempDir();
+
+    expect(patchTsconfigBuildExclude(dir)).toEqual({ file: 'tsconfig.build.json', status: 'missing' });
+  });
+
+  it('reports invalid-json without throwing when the file is malformed', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(path.join(dir, 'tsconfig.build.json'), '{ not valid json');
+
+    expect(patchTsconfigBuildExclude(dir)).toEqual({ file: 'tsconfig.build.json', status: 'invalid-json' });
+  });
+});
+
+describe('patchRootTsconfigAlias', () => {
+  it('adds the @/* alias when compilerOptions.paths is absent', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(path.join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: {} }));
+
+    const result = patchRootTsconfigAlias(dir);
+
+    expect(result.status).toBe('patched');
+    const written = JSON.parse(fs.readFileSync(path.join(dir, 'tsconfig.json'), 'utf8'));
+    expect(written.compilerOptions.paths['@/*']).toEqual(['./resources/js/*']);
+  });
+
+  it('leaves an existing @/* alias untouched and reports already-present', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(
+      path.join(dir, 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { paths: { '@/*': ['./custom/*'] } } }),
+    );
+
+    const result = patchRootTsconfigAlias(dir);
+
+    expect(result.status).toBe('already-present');
+    const written = JSON.parse(fs.readFileSync(path.join(dir, 'tsconfig.json'), 'utf8'));
+    expect(written.compilerOptions.paths['@/*']).toEqual(['./custom/*']);
+  });
+
+  it('reports missing when tsconfig.json does not exist', () => {
+    const dir = mkTempDir();
+
+    expect(patchRootTsconfigAlias(dir)).toEqual({ file: 'tsconfig.json', status: 'missing' });
   });
 });
