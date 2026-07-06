@@ -1,4 +1,4 @@
-import { ArgumentsHost, Catch, ExceptionFilter, Injectable } from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, Injectable, Logger } from '@nestjs/common';
 import { inertiaHttpAdapter } from '../adapters/http-adapter.utils';
 import { HttpRequestLike, HttpResponseLike } from '../adapters';
 import { INERTIA_HEADER, INERTIA_VALIDATE_REDIRECT_BACK } from '../common/inertia.constants';
@@ -37,6 +37,8 @@ function isHttpException(e: unknown): e is { getStatus(): number; getResponse():
 @Injectable()
 @Catch()
 export class InertiaValidationFilter implements ExceptionFilter {
+    private readonly logger = new Logger('InertiaValidationFilter');
+
     constructor(private readonly inertia: InertiaService) {}
 
     async catch(exception: unknown, host: ArgumentsHost): Promise<void> {
@@ -47,6 +49,9 @@ export class InertiaValidationFilter implements ExceptionFilter {
         if ((res as { headersSent?: boolean }).headersSent) return;
 
         if (!isHttpException(exception)) {
+            this.logger.error(exception instanceof Error ? exception.message : String(exception), exception instanceof Error ? exception.stack : undefined);
+            const cause = exception instanceof Error ? (exception as Error & { cause?: unknown }).cause : undefined;
+            if (cause) this.logger.error('Caused by:', cause instanceof Error ? cause.stack : String(cause));
             inertiaHttpAdapter.setStatus(res, 500);
             inertiaHttpAdapter.json(res, { statusCode: 500, message: 'Internal server error' });
             return;
