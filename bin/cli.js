@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const readline = require('readline');
 const { spawnSync } = require('child_process');
 
 function isNestProject(cwd) {
@@ -102,6 +103,31 @@ function patchRootTsconfigAlias(cwd) {
   return { file: 'tsconfig.json', status: 'patched' };
 }
 
+// Tier 1: always safe to auto-apply — appending known keys to a JSON object,
+// same risk profile as the tsconfig patches above.
+const SCRIPTS = {
+  'dev:client': 'vite build --watch',
+  'build:client': 'vite build',
+  'build:server': 'vite build --ssr resources/js/ssr.tsx',
+  'build:ssr': 'npm run build:client && npm run build:server',
+  'serve:ssr': 'node bootstrap/ssr/ssr.js',
+};
+
+function patchPackageJsonScripts(cwd) {
+  const filePath = path.join(cwd, 'package.json');
+  const { value: pkg, error } = readJson(filePath);
+  if (error) return { file: 'package.json', status: error };
+
+  pkg.scripts = pkg.scripts || {};
+  const additions = Object.keys(SCRIPTS).filter((key) => !(key in pkg.scripts));
+
+  if (additions.length === 0) return { file: 'package.json', status: 'already-present' };
+
+  for (const key of additions) pkg.scripts[key] = SCRIPTS[key];
+  writeJson(filePath, pkg);
+  return { file: 'package.json', status: 'patched', additions };
+}
+
 const DEPENDENCIES = ['@inertiajs/react', '@inertiajs/vite', 'react', 'react-dom'];
 const DEV_DEPENDENCIES = ['vite', '@vitejs/plugin-react'];
 
@@ -136,19 +162,134 @@ function runInstallCommand(manager, cwd, args, packages) {
   return !result.error && result.status === 0;
 }
 
+function installPackages(manager, cwd, packages, dev) {
+  if (packages.length === 0) return true;
+  const args = dev ? INSTALL_ARGS[manager].addDev : INSTALL_ARGS[manager].add;
+  return runInstallCommand(manager, cwd, args, packages);
+}
+
 // Installs are the one step here that touch the network and can fail for
 // reasons outside this CLI's control — unlike the file-only operations
 // above, so callers must handle a failed result by falling back to printed
 // manual instructions, never assume success.
 function installDependencies(cwd) {
   const manager = detectPackageManager(cwd);
-  const { add, addDev } = INSTALL_ARGS[manager];
 
   console.log(`\nInstalling dependencies with ${manager}...`);
-  const depsOk = runInstallCommand(manager, cwd, add, DEPENDENCIES);
-  const devDepsOk = depsOk && runInstallCommand(manager, cwd, addDev, DEV_DEPENDENCIES);
+  const depsOk = installPackages(manager, cwd, DEPENDENCIES, false);
+  const devDepsOk = depsOk && installPackages(manager, cwd, DEV_DEPENDENCIES, true);
 
   return { manager, success: depsOk && devDepsOk };
+}
+
+function insertAfterLastImport(content, newImportLines) {
+  const importLines = [...content.matchAll(/^import .*;$/gm)];
+  if (importLines.length === 0) return newImportLines.join('\n') + '\n' + content;
+
+  const last = importLines[importLines.length - 1];
+  const insertAt = last.index + last[0].length;
+  return content.slice(0, insertAt) + '\n' + newImportLines.join('\n') + content.slice(insertAt);
+}
+
+// Tier 2 (prompt-gated): only rewrites src/main.ts when it still matches the
+// untouched `nest new` scaffold — a plain NestFactory.create(AppModule) call
+// with no existing view-engine setup. Anything else (already customized,
+// different variable name pattern, etc.) reports shape-mismatch rather than
+// guessing an insertion point.
+function wireMainTs(cwd) {
+  const filePath = path.join(cwd, 'src', 'main.ts');
+  if (!fs.existsSync(filePath)) return { file: 'src/main.ts', status: 'missing' };
+
+  let content = fs.readFileSync(filePath, 'utf8');
+
+  if (content.includes("registerHelper('json'")) {
+    return { file: 'src/main.ts', status: 'already-present' };
+  }
+
+  const createRegex = /const\s+(\w+)\s*=\s*await\s+NestFactory\.create\(\s*AppModule\s*\)\s*;/;
+  const match = content.match(createRegex);
+  if (!match) return { file: 'src/main.ts', status: 'shape-mismatch' };
+
+  const appVar = match[1];
+  content = content.replace(
+    createRegex,
+    `const ${appVar} = await NestFactory.create<NestExpressApplication>(AppModule);\n` +
+      `  ${appVar}.useStaticAssets(join(process.cwd(), 'public'));\n` +
+      `  ${appVar}.setBaseViewsDir(join(process.cwd(), 'views'));\n` +
+      `  ${appVar}.setViewEngine('hbs');\n` +
+      `  hbs.registerHelper('json', (value) => JSON.stringify(value));`,
+  );
+
+  content = insertAfterLastImport(content, [
+    "import { NestExpressApplication } from '@nestjs/platform-express';",
+    "import { join } from 'node:path';",
+    "import hbs from 'hbs';",
+  ]);
+
+  fs.writeFileSync(filePath, content);
+  return { file: 'src/main.ts', status: 'patched' };
+}
+
+// Tier 3 (prompt-gated, most cautious): only rewrites src/app.module.ts when
+// all three untouched-scaffold markers match — the plain `{ Module }` import,
+// an empty imports array, and an empty class body. A single mismatch (an
+// existing import, a non-empty imports array, custom class body) means the
+// file was already customized, so this bails entirely rather than applying
+// a partial edit.
+function wireAppModule(cwd) {
+  const filePath = path.join(cwd, 'src', 'app.module.ts');
+  if (!fs.existsSync(filePath)) return { file: 'src/app.module.ts', status: 'missing' };
+
+  let content = fs.readFileSync(filePath, 'utf8');
+
+  if (content.includes('InertiaModule')) {
+    return { file: 'src/app.module.ts', status: 'already-present' };
+  }
+
+  const moduleImportRegex = /import \{ Module \} from '@nestjs\/common';/;
+  const emptyImportsRegex = /imports:\s*\[\s*\]/;
+  const emptyClassRegex = /export class AppModule\s*\{\s*\}/;
+
+  if (!moduleImportRegex.test(content) || !emptyImportsRegex.test(content) || !emptyClassRegex.test(content)) {
+    return { file: 'src/app.module.ts', status: 'shape-mismatch' };
+  }
+
+  content = content
+    .replace(
+      moduleImportRegex,
+      "import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';\n" +
+        "import { HandleInertiaRequests, InertiaModule } from 'inertia-nestjs';",
+    )
+    .replace(
+      emptyImportsRegex,
+      "imports: [\n    InertiaModule.forRoot({\n      rootView: 'app',\n      version: '1.0.0',\n    }),\n  ]",
+    )
+    .replace(
+      emptyClassRegex,
+      'export class AppModule implements NestModule {\n' +
+        '  configure(consumer: MiddlewareConsumer) {\n' +
+        "    consumer.apply(HandleInertiaRequests).forRoutes('*');\n" +
+        '  }\n' +
+        '}',
+    );
+
+  fs.writeFileSync(filePath, content);
+  return { file: 'src/app.module.ts', status: 'patched' };
+}
+
+// Non-TTY contexts (CI, piped input) always decline — there's no one there
+// to answer, so the safe default is the same printed-instructions behavior
+// as before this feature existed.
+function promptYesNo(question) {
+  if (!process.stdin.isTTY) return Promise.resolve(false);
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(`${question} (y/N) `, (answer) => {
+      rl.close();
+      resolve(/^y(es)?$/i.test(answer.trim()));
+    });
+  });
 }
 
 function logPatchResult(result) {
@@ -163,17 +304,8 @@ function logPatchResult(result) {
   }
 }
 
-const NEXT_STEPS = `
-Next steps:
-
-1. Add these scripts to package.json:
-   "dev:client": "vite build --watch",
-   "build:client": "vite build",
-   "build:server": "vite build --ssr resources/js/ssr.tsx",
-   "build:ssr": "npm run build:client && npm run build:server",
-   "serve:ssr": "node bootstrap/ssr/ssr.js"
-
-2. Register InertiaModule in your AppModule:
+const APP_MODULE_SNIPPET = `
+Register InertiaModule in your AppModule:
 
    import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
    import { HandleInertiaRequests, InertiaModule } from 'inertia-nestjs';
@@ -187,12 +319,14 @@ Next steps:
      ],
    })
    export class AppModule implements NestModule {
-     configure(consumer) {
+     configure(consumer: MiddlewareConsumer) {
        consumer.apply(HandleInertiaRequests).forRoutes('*');
      }
    }
+`;
 
-3. Install and wire up the Handlebars view engine and static assets:
+const MAIN_TS_SNIPPET = `
+Install and wire up the Handlebars view engine and static assets:
    npm install hbs
 
    In src/main.ts:
@@ -215,7 +349,25 @@ Automatic install via ${manager} failed — install manually:
 `;
 }
 
-function run(argv, cwd) {
+// Reports what happened to a prompt-gated wire attempt and, whenever it
+// didn't result in working code (declined, missing file, or a shape that
+// wasn't safe to touch), prints the manual snippet as a fallback so the
+// step is never silently dropped.
+function reportWireResult(result, manualSnippet) {
+  if (result.status === 'patched') {
+    console.log(`patched  ${result.file}`);
+  } else if (result.status === 'already-present') {
+    console.log(`skipped  ${result.file} (already wired)`);
+  } else if (result.status === 'missing') {
+    console.log(`skipped  ${result.file} (not found)`);
+    console.log(manualSnippet);
+  } else if (result.status === 'shape-mismatch') {
+    console.log(`skipped  ${result.file} (doesn't match the default NestJS scaffold — wire it manually)`);
+    console.log(manualSnippet);
+  }
+}
+
+async function run(argv, cwd) {
   const subcommand = argv[2];
 
   if (subcommand !== 'react') {
@@ -238,13 +390,36 @@ function run(argv, cwd) {
   for (const file of created) console.log(`created  ${file}`);
   for (const file of skipped) console.log(`skipped  ${file} (already exists)`);
 
+  // Tier 1: always-safe JSON patches, no prompt needed.
   logPatchResult(patchTsconfigBuildExclude(cwd));
   logPatchResult(patchRootTsconfigAlias(cwd));
+  logPatchResult(patchPackageJsonScripts(cwd));
 
   const { manager, success } = installDependencies(cwd);
   console.log(success ? `installed dependencies via ${manager}` : manualInstallFallback(manager));
 
-  console.log(NEXT_STEPS);
+  // Tier 2: prompt-gated, shape-checked — src/main.ts.
+  const wireMain = await promptYesNo(
+    '\nAuto-wire src/main.ts for the Handlebars view engine and static assets?',
+  );
+  if (wireMain) {
+    const mainResult = wireMainTs(cwd);
+    reportWireResult(mainResult, MAIN_TS_SNIPPET);
+    if (mainResult.status === 'patched' && success) {
+      console.log(`\nInstalling hbs with ${manager}...`);
+      installPackages(manager, cwd, ['hbs'], false);
+    }
+  } else {
+    console.log(MAIN_TS_SNIPPET);
+  }
+
+  // Tier 3: prompt-gated, shape-checked, most cautious — src/app.module.ts.
+  const wireModule = await promptYesNo('\nAuto-wire src/app.module.ts to register InertiaModule?');
+  if (wireModule) {
+    reportWireResult(wireAppModule(cwd), APP_MODULE_SNIPPET);
+  } else {
+    console.log(APP_MODULE_SNIPPET);
+  }
 }
 
 module.exports = {
@@ -253,9 +428,15 @@ module.exports = {
   copyTemplate,
   patchTsconfigBuildExclude,
   patchRootTsconfigAlias,
+  patchPackageJsonScripts,
   detectPackageManager,
+  wireMainTs,
+  wireAppModule,
 };
 
 if (require.main === module) {
-  run(process.argv, process.cwd());
+  run(process.argv, process.cwd()).catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
 }
