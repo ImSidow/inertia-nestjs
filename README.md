@@ -16,7 +16,9 @@
 - 🔁 **Partial reload support**
 - 🔐 **History encryption**
 - 🌐 **Optional Server‑Side Rendering (SSR)**
+- ✅ **Validation error flashing and exception handling** (`@InertiaValidate()`, `@InertiaHandleException()`)
 - 🧪 **Testing utilities**
+- ⚙️ **CLI scaffolding** (`npx inertia-nestjs react`)
 - 📦 **Inspired by `inertia-laravel`**
 
 ---
@@ -34,6 +36,24 @@ npm install @inertiajs/react
 # or
 npm install @inertiajs/vue3
 ```
+
+---
+
+# Scaffolding
+
+Two CLI commands are available once the package is installed:
+
+```bash
+npx inertia-nestjs react
+```
+
+Scaffolds a React + Vite frontend into the current NestJS project: `resources/js/{app.tsx,ssr.tsx,pages/,tsconfig.json,vite-env.d.ts}`, `resources/css/app.css`, `views/app.hbs`, `vite.config.mts`. It also auto-patches `tsconfig.build.json` (excludes the frontend from the backend build), the root `tsconfig.json` (adds a `@/*` alias), and `package.json` scripts, then auto-installs the frontend dependencies with whichever package manager it detects (npm/pnpm/yarn/bun, from the lockfile present). It then prompts — in an interactive terminal only — to also auto-wire `src/main.ts` and `src/app.module.ts`, but only when those files still match the untouched `nest new` scaffold; otherwise it prints the snippet instead of guessing an edit. Re-running the command is always safe — every step skips whatever already exists.
+
+```bash
+npx inertia-nestjs skill
+```
+
+Installs a Claude Code skill (`.claude/skills/inertia-nestjs/SKILL.md`) documenting this adapter's API and common gotchas, for AI coding assistants working in your project.
 
 ---
 
@@ -85,20 +105,54 @@ Inertia requires a root HTML template that embeds the serialized page object.
     </head>
 
     <body>
+        <script type="application/json" data-page="app">{{{json page}}}</script>
+
         {{#if ssrBody}}
-        <div id="app" data-page="{{{json page}}}">{{{ssrBody}}}</div>
+        <div id="app">{{{ssrBody}}}</div>
         {{else}}
-        <div id="app" data-page="{{{json page}}}"></div>
+        <div id="app"></div>
         {{/if}}
     </body>
 </html>
 ```
 
+> The client reads the page object from a `<script type="application/json" data-page="app">` tag, **not** a `data-page` attribute on the `#app` div — that older pattern doesn't get picked up by `@inertiajs/core` and the page never hydrates.
+
 ### EJS (`views/app.ejs`)
 
 ```html
-<div id="app" data-page="<%- JSON.stringify(page) %>"></div>
+<script type="application/json" data-page="app"><%- JSON.stringify(page) %></script>
+<div id="app"></div>
 ```
+
+---
+
+## Wiring `main.ts`
+
+The Handlebars view engine and the built frontend's static assets need to be wired up in your bootstrap file:
+
+```ts
+// main.ts
+import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'node:path';
+import hbs from 'hbs';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+    const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+    app.useStaticAssets(join(process.cwd(), 'public'));
+    app.setBaseViewsDir(join(process.cwd(), 'views'));
+    app.setViewEngine('hbs');
+    hbs.registerHelper('json', (value) => JSON.stringify(value));
+
+    await app.listen(3000);
+}
+bootstrap();
+```
+
+Requires `npm install hbs @types/hbs`. Skipping `useStaticAssets` is a common mistake — without it, the built client bundle 404s and the page stays blank even though the server-rendered HTML looks correct.
 
 ---
 
@@ -132,6 +186,40 @@ export class UsersController {
     }
 }
 ```
+
+---
+
+# Validation & Exception Handling
+
+## `@InertiaValidate()`
+
+Catches `class-validator` errors, flashes them, and redirects back — the client reads them from `usePage().props.errors` (or `useForm`'s `errors`) after the redirect.
+
+```ts
+import { InertiaValidate } from 'inertia-nestjs';
+
+@Post('users')
+@InertiaValidate() // or @InertiaValidate('Users/Create') to redirect to a specific component instead of back
+async create(@Body() dto: CreateUserDto) {
+    await this.users.create(dto);
+}
+```
+
+## `@InertiaHandleException()`
+
+Catches HTTP exceptions thrown in the handler, flashes the message as an error, and redirects back (or to `returnPath` if given). Shares the same underlying mechanism as `@InertiaValidate()`.
+
+```ts
+import { InertiaHandleException } from 'inertia-nestjs';
+
+@Post('orders/:id')
+@InertiaHandleException({ codes: [404, 409], returnPath: '/orders' })
+async update(@Param('id') id: string) {
+    await this.orders.update(id);
+}
+```
+
+Omit `codes` to catch all HTTP exceptions thrown in that handler.
 
 ---
 
@@ -426,6 +514,21 @@ it('redirects to external URL', async () => {
 | sharedProps    | object                 | `{}`        | Props shared with all pages   |
 | encryptHistory | boolean                | `false`     | Encrypt history for all pages |
 | ssr            | object                 | `undefined` | SSR configuration             |
+
+### `InertiaModule.forRootAsync(options)`
+
+For config-driven setup — same shape as any Nest async provider:
+
+```ts
+InertiaModule.forRootAsync({
+    imports: [ConfigModule],
+    inject: [ConfigService],
+    useFactory: (config: ConfigService) => ({
+        rootView: 'app',
+        version: config.get('ASSET_VERSION'),
+    }),
+});
+```
 
 ---
 
