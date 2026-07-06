@@ -60,7 +60,12 @@ short of copy-pasting the example by hand.
   <script type="application/json" data-page="app">{{{json page}}}</script>
   <div id="app">{{#if ssrBody}}{{{ssrBody}}}{{/if}}</div>
   ```
-- `vite.config.ts`: add the `@inertiajs/vite` plugin alongside `react()`.
+- `vite.config.ts` → `vite.config.mts`: add the `@inertiajs/vite` plugin
+  alongside `react()`. The `.mts` extension is required, not cosmetic:
+  `@inertiajs/vite` is ESM-only, and Vite/esbuild loads a plain `.ts` config
+  as CommonJS in a project without `"type": "module"`, which fails to
+  `require()` the ESM-only package. `.mts` forces ESM regardless of the
+  project's own module type.
 - `resources/js/tsconfig.json`: add `"paths": { "@/*": ["./*"] }`.
 - `resources/js/app.tsx`, `ssr.tsx`: no functional changes needed — already
   match the pattern the CLI template will reuse.
@@ -92,7 +97,7 @@ templates/react/
   resources/js/tsconfig.json
   resources/js/vite-env.d.ts
   views/app.hbs
-  vite.config.ts
+  vite.config.mts
 ```
 
 **Steps the CLI performs, in order:**
@@ -112,12 +117,29 @@ templates/react/
      `build:server`, `build:ssr`, `serve:ssr`)
    - the `AppModule` snippet: `InertiaModule.forRoot({...})` import +
      `HandleInertiaRequests` middleware registration
+   - the `main.ts` snippet: `hbs` install + `app.useStaticAssets(...)`,
+     `app.setBaseViewsDir(...)`, `app.setViewEngine('hbs')`, and the
+     `json` Handlebars helper `views/app.hbs` relies on — found missing
+     during end-to-end testing (see Verification); without it every
+     `@Inertia` route 500s and the built bundle 404s
+   - a `tsconfig.build.json` exclude for `resources` and `vite.config.mts`
+     — also found missing during end-to-end testing; without it the
+     frontend `.tsx` files leak into the Nest backend type-check and the
+     build fails
+   - an optional root-`tsconfig.json` `"paths": { "@/*": ["./resources/js/*"] }`
+     addition — see UI-library neutrality below
 
 **UI-library neutrality:** the template ships no `components.json`, no
-Tailwind config, no CSS framework, no UI dependency. `resources/js/tsconfig.json`
-carries the `@/*` alias so any UI-lib CLI that reads `tsconfig.json` for
-alias detection (shadcn's `init` in particular) finds it without extra
-configuration from the developer.
+Tailwind config, no CSS framework, no UI dependency. The `@/*` alias lives
+in `resources/js/tsconfig.json` for the frontend's own type-checking, but
+UI-lib CLIs that detect aliases (shadcn's `init` in particular) read the
+project's *root* `tsconfig.json`, not the nested one — confirmed by testing
+directly against shadcn. The printed next-steps therefore include an
+optional step to add the same alias to the root `tsconfig.json`, which is
+what actually makes shadcn's alias detection pass. Even with that step,
+shadcn's `init` still hard-aborts on missing Tailwind CSS before reaching
+any style prompts — expected and permanent for this deliberately
+Tailwind-free template, not something this feature makes "just work."
 
 ## File layout after scaffolding
 
@@ -130,21 +152,27 @@ configuration from the developer.
     vite-env.d.ts
     pages/
   views/app.hbs
-  vite.config.ts
+  vite.config.mts
 ```
 
 Nothing under `src/` (NestJS side) is touched — that's the printed
-`AppModule` snippet, applied by hand.
+`AppModule`/`main.ts` snippets, applied by hand.
 
 ## Verification
 
-No test framework needed for a file-copy script; one manual check instead:
+No test framework needed for a file-copy script; a manual end-to-end pass
+instead — done twice: once against the original printed next-steps (which
+found the gaps below), once after fixing them:
 
-- Scaffold into a scratch NestJS project, paste the printed `AppModule`
-  snippet, install the printed dependencies, run the dev/build scripts, and
-  confirm the page hydrates (no blank page — the `app.hbs` fix is what
-  this actually exercises).
-- Run `npx shadcn init` against the scaffolded project and confirm it
-  detects the `@` alias without manual prompts.
+- Scaffold into a scratch NestJS project and follow the printed next-steps
+  **verbatim, with no manual additions**, then confirm the page hydrates
+  (no blank page). The first pass this way found two steps missing —
+  no `hbs`/`main.ts` wiring (every route 500'd) and no `tsconfig.build.json`
+  exclude (backend build failed) — both now printed (see Design section B).
+- Run `npx shadcn init` against the scaffolded project. As shipped, its
+  alias check fails: shadcn reads the root `tsconfig.json`, not the nested
+  `resources/js/tsconfig.json`. Adding the printed optional root-alias step
+  makes the alias check pass; shadcn still aborts separately on missing
+  Tailwind, which is expected for this Tailwind-free template.
 - Re-run `npx inertia-nestjs react` a second time and confirm existing
   files are reported as skipped, not overwritten.

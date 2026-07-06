@@ -7,7 +7,7 @@ type PageModule = {
   default: ComponentType<Record<string, unknown>>;
 };
 
-const appName = 'NestJS React Example';
+const appName = 'Inertia App';
 const pages = import.meta.glob<PageModule>('./pages/**/*.tsx');
 
 void createInertiaApp({

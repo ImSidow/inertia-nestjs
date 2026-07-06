@@ -15,7 +15,7 @@
 - No `--force`/overwrite flag — the CLI skips any destination file that already exists and reports it.
 - No auto-install of dependencies and no auto-run of the dev server — the CLI only prints the commands.
 - No `nest add` schematic integration — a plain bin script must work in any NestJS project, not just Nest-CLI-scaffolded ones.
-- The template ships no UI-library dependency, no `components.json`, no CSS framework — only the `@/*` path alias (in both `vite.config.ts` and `resources/js/tsconfig.json`) so a UI-lib CLI (e.g. shadcn) can self-detect it later.
+- The template ships no UI-library dependency, no `components.json`, no CSS framework — only the `@/*` path alias (in both `vite.config.mts` and `resources/js/tsconfig.json`) so a UI-lib CLI (e.g. shadcn) can self-detect it later.
 - `bin/cli.js` has zero runtime dependencies of its own.
 
 ---
@@ -24,7 +24,7 @@
 
 **Files:**
 - Modify: `examples/nestjs-react/views/app.hbs`
-- Modify: `examples/nestjs-react/vite.config.ts`
+- Modify: `examples/nestjs-react/vite.config.mts`
 - Modify: `examples/nestjs-react/resources/js/tsconfig.json`
 - Modify: `examples/nestjs-react/package.json`
 
@@ -59,7 +59,7 @@ Current content has `<div id='app' data-page='{{{json page}}}'>`. Replace the fu
 </html>
 ```
 
-- [ ] **Step 2: Add the `@inertiajs/vite` plugin to `vite.config.ts`**
+- [ ] **Step 2: Add the `@inertiajs/vite` plugin to `vite.config.mts`**
 
 Replace the file with:
 
@@ -140,13 +140,13 @@ Run:
 ```bash
 cd examples/nestjs-react && pnpm install && pnpm run build:client
 ```
-Expected: build completes with no errors, and `public/build/app.js` is produced. This confirms `vite.config.ts` parses and the `@inertiajs/vite` plugin loads correctly. (It does not by itself prove hydration — that's covered by Task 4's manual browser check.)
+Expected: build completes with no errors, and `public/build/app.js` is produced. This confirms `vite.config.mts` parses and the `@inertiajs/vite` plugin loads correctly. (It does not by itself prove hydration — that's covered by Task 4's manual browser check.)
 
 - [ ] **Step 6: Commit**
 
 ```bash
 cd /Users/im-sidow/Documents/programming/test/inertia-nestjs-adapter
-git add examples/nestjs-react/views/app.hbs examples/nestjs-react/vite.config.ts examples/nestjs-react/resources/js/tsconfig.json examples/nestjs-react/package.json examples/nestjs-react/pnpm-lock.yaml
+git add examples/nestjs-react/views/app.hbs examples/nestjs-react/vite.config.mts examples/nestjs-react/resources/js/tsconfig.json examples/nestjs-react/package.json examples/nestjs-react/pnpm-lock.yaml
 git commit -m "fix(example-react): use script-tag page hydration, add @inertiajs/vite plugin and @/* alias"
 ```
 
@@ -156,7 +156,7 @@ git commit -m "fix(example-react): use script-tag page hydration, add @inertiajs
 
 **Files:**
 - Create: `templates/react/views/app.hbs`
-- Create: `templates/react/vite.config.ts`
+- Create: `templates/react/vite.config.mts`
 - Create: `templates/react/resources/js/app.tsx`
 - Create: `templates/react/resources/js/ssr.tsx`
 - Create: `templates/react/resources/js/tsconfig.json`
@@ -164,16 +164,16 @@ git commit -m "fix(example-react): use script-tag page hydration, add @inertiajs
 - Create: `templates/react/resources/js/pages/.gitkeep`
 
 **Interfaces:**
-- Consumes: the fixed file contents from Task 1 (`app.hbs`, `vite.config.ts`, `resources/js/tsconfig.json`) plus the example's already-correct `app.tsx`/`ssr.tsx`/`vite-env.d.ts`.
+- Consumes: the fixed file contents from Task 1 (`app.hbs`, `vite.config.mts`, `resources/js/tsconfig.json`) plus the example's already-correct `app.tsx`/`ssr.tsx`/`vite-env.d.ts`.
 - Produces: `templates/react/` — the exact directory tree `bin/cli.js` (Task 3) walks and copies into a target project.
 
 - [ ] **Step 1: Copy the fixed `app.hbs`**
 
 Create `templates/react/views/app.hbs` with the exact content from Task 1 Step 1 (the script-tag version).
 
-- [ ] **Step 2: Copy the fixed `vite.config.ts`**
+- [ ] **Step 2: Copy the fixed `vite.config.mts`**
 
-Create `templates/react/vite.config.ts` with the exact content from Task 1 Step 2.
+Create `templates/react/vite.config.mts` with the exact content from Task 1 Step 2.
 
 - [ ] **Step 3: Copy the fixed `resources/js/tsconfig.json`**
 
@@ -285,7 +285,7 @@ templates/react/resources/js/pages/.gitkeep
 templates/react/resources/js/ssr.tsx
 templates/react/resources/js/tsconfig.json
 templates/react/resources/js/vite-env.d.ts
-templates/react/vite.config.ts
+templates/react/vite.config.mts
 templates/react/views/app.hbs
 ```
 
