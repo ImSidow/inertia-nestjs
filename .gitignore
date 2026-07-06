@@ -8,4 +8,6 @@ coverage
 **/.DS_Store
 
 *.tgz
-npm-debug.log*.worktrees/
+npm-debug.log*
+.worktrees/
+.superpowers/
