@@ -2,7 +2,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-const { isNestProject, copyTemplate, patchTsconfigBuildExclude, patchRootTsconfigAlias } = require('../bin/cli') as {
+const {
+  isNestProject,
+  copyTemplate,
+  patchTsconfigBuildExclude,
+  patchRootTsconfigAlias,
+  detectPackageManager,
+} = require('../bin/cli') as {
   isNestProject: (cwd: string) => boolean;
   copyTemplate: (
     templateDir: string,
@@ -10,6 +16,7 @@ const { isNestProject, copyTemplate, patchTsconfigBuildExclude, patchRootTsconfi
   ) => { created: string[]; skipped: string[] };
   patchTsconfigBuildExclude: (cwd: string) => { file: string; status: string; additions?: string[] };
   patchRootTsconfigAlias: (cwd: string) => { file: string; status: string };
+  detectPackageManager: (cwd: string) => string;
 };
 
 function mkTempDir(): string {
@@ -169,5 +176,49 @@ describe('patchRootTsconfigAlias', () => {
     const dir = mkTempDir();
 
     expect(patchRootTsconfigAlias(dir)).toEqual({ file: 'tsconfig.json', status: 'missing' });
+  });
+});
+
+describe('detectPackageManager', () => {
+  it('detects pnpm from pnpm-lock.yaml', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(path.join(dir, 'pnpm-lock.yaml'), '');
+
+    expect(detectPackageManager(dir)).toBe('pnpm');
+  });
+
+  it('detects yarn from yarn.lock', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(path.join(dir, 'yarn.lock'), '');
+
+    expect(detectPackageManager(dir)).toBe('yarn');
+  });
+
+  it('detects bun from bun.lock', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(path.join(dir, 'bun.lock'), '');
+
+    expect(detectPackageManager(dir)).toBe('bun');
+  });
+
+  it('detects npm from package-lock.json', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(path.join(dir, 'package-lock.json'), '');
+
+    expect(detectPackageManager(dir)).toBe('npm');
+  });
+
+  it('defaults to npm when no lockfile is present', () => {
+    const dir = mkTempDir();
+
+    expect(detectPackageManager(dir)).toBe('npm');
+  });
+
+  it('prefers pnpm over npm when both lockfiles are present', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(path.join(dir, 'package-lock.json'), '');
+    fs.writeFileSync(path.join(dir, 'pnpm-lock.yaml'), '');
+
+    expect(detectPackageManager(dir)).toBe('pnpm');
   });
 });

@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 function isNestProject(cwd) {
   const pkgPath = path.join(cwd, 'package.json');
@@ -101,6 +102,55 @@ function patchRootTsconfigAlias(cwd) {
   return { file: 'tsconfig.json', status: 'patched' };
 }
 
+const DEPENDENCIES = ['@inertiajs/react', '@inertiajs/vite', 'react', 'react-dom'];
+const DEV_DEPENDENCIES = ['vite', '@vitejs/plugin-react'];
+
+// Detected from the lockfile already present, since a project's own choice
+// of package manager isn't recorded anywhere else. Defaults to npm — every
+// Node project has a package.json, so it's the one universal fallback.
+function detectPackageManager(cwd) {
+  if (fs.existsSync(path.join(cwd, 'pnpm-lock.yaml'))) return 'pnpm';
+  if (fs.existsSync(path.join(cwd, 'yarn.lock'))) return 'yarn';
+  if (fs.existsSync(path.join(cwd, 'bun.lockb')) || fs.existsSync(path.join(cwd, 'bun.lock'))) return 'bun';
+  return 'npm';
+}
+
+// The verb (and dev-flag spelling) for "add these specific packages"
+// differs per manager — not just the binary name.
+const INSTALL_ARGS = {
+  npm: { add: ['install'], addDev: ['install', '-D'] },
+  pnpm: { add: ['add'], addDev: ['add', '-D'] },
+  yarn: { add: ['add'], addDev: ['add', '-D'] },
+  bun: { add: ['add'], addDev: ['add', '-d'] },
+};
+
+function runInstallCommand(manager, cwd, args, packages) {
+  // shell:true only matters on Windows, where npm/pnpm/yarn/bun are .cmd
+  // shims spawnSync can't exec directly without it; package names here have
+  // no shell metacharacters, so this is safe.
+  const result = spawnSync(manager, [...args, ...packages], {
+    cwd,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  });
+  return !result.error && result.status === 0;
+}
+
+// Installs are the one step here that touch the network and can fail for
+// reasons outside this CLI's control — unlike the file-only operations
+// above, so callers must handle a failed result by falling back to printed
+// manual instructions, never assume success.
+function installDependencies(cwd) {
+  const manager = detectPackageManager(cwd);
+  const { add, addDev } = INSTALL_ARGS[manager];
+
+  console.log(`\nInstalling dependencies with ${manager}...`);
+  const depsOk = runInstallCommand(manager, cwd, add, DEPENDENCIES);
+  const devDepsOk = depsOk && runInstallCommand(manager, cwd, addDev, DEV_DEPENDENCIES);
+
+  return { manager, success: depsOk && devDepsOk };
+}
+
 function logPatchResult(result) {
   if (result.status === 'patched') {
     console.log(`patched  ${result.file}`);
@@ -116,18 +166,14 @@ function logPatchResult(result) {
 const NEXT_STEPS = `
 Next steps:
 
-1. Add dependencies:
-   npm install @inertiajs/react @inertiajs/vite react react-dom
-   npm install -D vite @vitejs/plugin-react
-
-2. Add these scripts to package.json:
+1. Add these scripts to package.json:
    "dev:client": "vite build --watch",
    "build:client": "vite build",
    "build:server": "vite build --ssr resources/js/ssr.tsx",
    "build:ssr": "npm run build:client && npm run build:server",
    "serve:ssr": "node bootstrap/ssr/ssr.js"
 
-3. Register InertiaModule in your AppModule:
+2. Register InertiaModule in your AppModule:
 
    import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
    import { HandleInertiaRequests, InertiaModule } from 'inertia-nestjs';
@@ -146,7 +192,7 @@ Next steps:
      }
    }
 
-4. Install and wire up the Handlebars view engine and static assets:
+3. Install and wire up the Handlebars view engine and static assets:
    npm install hbs
 
    In src/main.ts:
@@ -160,6 +206,14 @@ Next steps:
      app.setViewEngine('hbs');
      hbs.registerHelper('json', (value) => JSON.stringify(value));
 `;
+
+function manualInstallFallback(manager) {
+  return `
+Automatic install via ${manager} failed — install manually:
+   npm install ${DEPENDENCIES.join(' ')}
+   npm install -D ${DEV_DEPENDENCIES.join(' ')}
+`;
+}
 
 function run(argv, cwd) {
   const subcommand = argv[2];
@@ -187,6 +241,9 @@ function run(argv, cwd) {
   logPatchResult(patchTsconfigBuildExclude(cwd));
   logPatchResult(patchRootTsconfigAlias(cwd));
 
+  const { manager, success } = installDependencies(cwd);
+  console.log(success ? `installed dependencies via ${manager}` : manualInstallFallback(manager));
+
   console.log(NEXT_STEPS);
 }
 
@@ -196,6 +253,7 @@ module.exports = {
   copyTemplate,
   patchTsconfigBuildExclude,
   patchRootTsconfigAlias,
+  detectPackageManager,
 };
 
 if (require.main === module) {
