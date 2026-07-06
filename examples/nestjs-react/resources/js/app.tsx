@@ -1,4 +1,4 @@
-import './app.css';
+import '../css/app.css';
 import type { ComponentType } from 'react';
 import { createInertiaApp } from '@inertiajs/react';
 import { createRoot } from 'react-dom/client';

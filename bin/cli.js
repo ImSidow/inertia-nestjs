@@ -55,6 +55,7 @@ Register InertiaModule in your AppModule:
 const MAIN_TS_SNIPPET = `
 Install and wire up the Handlebars view engine and static assets:
    npm install hbs
+   npm install -D @types/hbs
 
    In src/main.ts:
      import { NestExpressApplication } from '@nestjs/platform-express';
@@ -129,6 +130,7 @@ async function run(argv, cwd) {
     if (mainResult.status === 'patched' && success) {
       console.log(`\nInstalling hbs with ${manager}...`);
       installPackages(manager, cwd, ['hbs'], false);
+      installPackages(manager, cwd, ['@types/hbs'], true);
     }
   } else {
     console.log(MAIN_TS_SNIPPET);
