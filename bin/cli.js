@@ -91,22 +91,28 @@ function reportWireResult(result, manualSnippet) {
   }
 }
 
-async function run(argv, cwd) {
-  const subcommand = argv[2];
+function requireNestProject(cwd) {
+  if (isNestProject(cwd)) return true;
 
-  if (subcommand !== 'react') {
-    console.error(`Usage: inertia-nestjs react\n\nUnknown subcommand: ${subcommand || '(none)'}`);
-    process.exitCode = 1;
-    return;
-  }
+  console.error(
+    "This doesn't look like a NestJS project (no @nestjs/core dependency found in package.json). Run this from your Nest project root.",
+  );
+  process.exitCode = 1;
+  return false;
+}
 
-  if (!isNestProject(cwd)) {
-    console.error(
-      "This doesn't look like a NestJS project (no @nestjs/core dependency found in package.json). Run this from your Nest project root.",
-    );
-    process.exitCode = 1;
-    return;
-  }
+function runSkill(cwd) {
+  if (!requireNestProject(cwd)) return;
+
+  const skillDir = path.join(__dirname, '..', 'skill');
+  const { created, skipped } = copyTemplate(skillDir, cwd);
+
+  for (const file of created) console.log(`created  ${file}`);
+  for (const file of skipped) console.log(`skipped  ${file} (already exists)`);
+}
+
+async function runReact(cwd) {
+  if (!requireNestProject(cwd)) return;
 
   const templateDir = path.join(__dirname, '..', 'templates', 'react');
   const { created, skipped } = copyTemplate(templateDir, cwd);
@@ -142,6 +148,16 @@ async function run(argv, cwd) {
   } else {
     console.log(APP_MODULE_SNIPPET);
   }
+}
+
+async function run(argv, cwd) {
+  const subcommand = argv[2];
+
+  if (subcommand === 'skill') return runSkill(cwd);
+  if (subcommand === 'react') return runReact(cwd);
+
+  console.error(`Usage: inertia-nestjs react | inertia-nestjs skill\n\nUnknown subcommand: ${subcommand || '(none)'}`);
+  process.exitCode = 1;
 }
 
 module.exports = {
