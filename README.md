@@ -47,7 +47,7 @@ Two CLI commands are available once the package is installed:
 npx inertia-nestjs react
 ```
 
-Scaffolds a React + Vite frontend into the current NestJS project: `resources/js/{app.tsx,ssr.tsx,pages/,tsconfig.json,vite-env.d.ts}`, `resources/css/app.css`, `views/app.hbs`, `vite.config.mts`. It also auto-patches `tsconfig.build.json` (excludes the frontend from the backend build), the root `tsconfig.json` (adds a `@/*` alias), and `package.json` scripts, then auto-installs the frontend dependencies with whichever package manager it detects (npm/pnpm/yarn/bun, from the lockfile present). It then prompts — in an interactive terminal only — to also auto-wire `src/main.ts` and `src/app.module.ts`, but only when those files still match the untouched `nest new` scaffold; otherwise it prints the snippet instead of guessing an edit. Re-running the command is always safe — every step skips whatever already exists.
+Scaffolds a React + Vite frontend into the current NestJS project.
 
 ```bash
 npx inertia-nestjs skill
