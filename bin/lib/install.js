@@ -5,7 +5,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const DEPENDENCIES = ['@inertiajs/react', '@inertiajs/vite', 'react', 'react-dom'];
-const DEV_DEPENDENCIES = ['vite', '@vitejs/plugin-react'];
+const DEV_DEPENDENCIES = ['vite', '@vitejs/plugin-react', '@types/react', '@types/react-dom'];
 
 // Detected from the lockfile already present, since a project's own choice
 // of package manager isn't recorded anywhere else. Defaults to npm — every
@@ -18,9 +18,13 @@ function detectPackageManager(cwd) {
 }
 
 // The verb (and dev-flag spelling) for "add these specific packages"
-// differs per manager — not just the binary name.
+// differs per manager — not just the binary name. npm's dev install also
+// needs --legacy-peer-deps: @vitejs/plugin-react currently has a strict
+// peer conflict (a @babel/core 7 vs 8 mismatch pulled in transitively)
+// that npm 7+'s default resolver refuses to satisfy, even though the
+// packages themselves work fine together at runtime.
 const INSTALL_ARGS = {
-  npm: { add: ['install'], addDev: ['install', '-D'] },
+  npm: { add: ['install'], addDev: ['install', '-D', '--legacy-peer-deps'] },
   pnpm: { add: ['add'], addDev: ['add', '-D'] },
   yarn: { add: ['add'], addDev: ['add', '-D'] },
   bun: { add: ['add'], addDev: ['add', '-d'] },

@@ -34,10 +34,14 @@ function patchTsconfigBuildExclude(cwd) {
   return { file: 'tsconfig.build.json', status: 'patched', additions };
 }
 
-// Adds the @/* alias to the root tsconfig.json so UI-library CLIs that read
-// aliases from the project root (e.g. shadcn's init) can detect it, since
-// the alias otherwise only lives in the nested resources/js/tsconfig.json.
-function patchRootTsconfigAlias(cwd) {
+// Adds the @/* alias (so UI-lib CLIs like shadcn can detect it from the
+// project root) and excludes the frontend from the root tsconfig.json.
+// The exclude matters here separately from tsconfig.build.json's: VS Code
+// and ESLint's projectService type-check using this file directly, not
+// tsconfig.build.json (that one only affects `nest build`/`nest start`) —
+// without excluding resources/vite.config.mts here too, the editor's live
+// type-checker still pulls the frontend into the backend's TS program.
+function patchRootTsconfig(cwd) {
   const filePath = path.join(cwd, 'tsconfig.json');
   const { value: tsconfig, error } = readJson(filePath);
   if (error) return { file: 'tsconfig.json', status: error };
@@ -45,11 +49,21 @@ function patchRootTsconfigAlias(cwd) {
   tsconfig.compilerOptions = tsconfig.compilerOptions || {};
   tsconfig.compilerOptions.paths = tsconfig.compilerOptions.paths || {};
 
-  if (tsconfig.compilerOptions.paths['@/*']) {
+  const aliasMissing = !tsconfig.compilerOptions.paths['@/*'];
+  const exclude = Array.isArray(tsconfig.exclude) ? tsconfig.exclude : [];
+  const excludeAdditions = ['resources', 'vite.config.mts'].filter((entry) => !exclude.includes(entry));
+
+  if (!aliasMissing && excludeAdditions.length === 0) {
     return { file: 'tsconfig.json', status: 'already-present' };
   }
 
-  tsconfig.compilerOptions.paths['@/*'] = ['./resources/js/*'];
+  if (aliasMissing) {
+    tsconfig.compilerOptions.paths['@/*'] = ['./resources/js/*'];
+  }
+  if (excludeAdditions.length > 0) {
+    tsconfig.exclude = exclude.concat(excludeAdditions);
+  }
+
   writeJson(filePath, tsconfig);
   return { file: 'tsconfig.json', status: 'patched' };
 }
@@ -79,6 +93,6 @@ function patchPackageJsonScripts(cwd) {
 
 module.exports = {
   patchTsconfigBuildExclude,
-  patchRootTsconfigAlias,
+  patchRootTsconfig,
   patchPackageJsonScripts,
 };

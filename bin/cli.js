@@ -6,7 +6,7 @@ const { isNestProject } = require('./lib/nest-project');
 const { copyTemplate } = require('./lib/copy-template');
 const {
   patchTsconfigBuildExclude,
-  patchRootTsconfigAlias,
+  patchRootTsconfig,
   patchPackageJsonScripts,
 } = require('./lib/json-patches');
 const {
@@ -73,7 +73,7 @@ function manualInstallFallback(manager) {
   return `
 Automatic install via ${manager} failed — install manually:
    npm install ${DEPENDENCIES.join(' ')}
-   npm install -D ${DEV_DEPENDENCIES.join(' ')}
+   npm install -D ${DEV_DEPENDENCIES.join(' ')} --legacy-peer-deps
 `;
 }
 
@@ -121,7 +121,7 @@ async function runReact(cwd) {
   for (const file of skipped) console.log(`skipped  ${file} (already exists)`);
 
   logPatchResult(patchTsconfigBuildExclude(cwd));
-  logPatchResult(patchRootTsconfigAlias(cwd));
+  logPatchResult(patchRootTsconfig(cwd));
   logPatchResult(patchPackageJsonScripts(cwd));
 
   const { manager, success } = installDependencies(cwd);
@@ -165,7 +165,7 @@ module.exports = {
   isNestProject,
   copyTemplate,
   patchTsconfigBuildExclude,
-  patchRootTsconfigAlias,
+  patchRootTsconfig,
   patchPackageJsonScripts,
   detectPackageManager,
   wireMainTs,

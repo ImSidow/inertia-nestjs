@@ -1,7 +1,6 @@
 import '../css/app.css';
 import type { ComponentType } from 'react';
 import { createInertiaApp } from '@inertiajs/react';
-import { createRoot } from 'react-dom/client';
 
 type PageModule = {
   default: ComponentType<Record<string, unknown>>;
@@ -24,9 +23,7 @@ void createInertiaApp({
     return module.default;
   },
 
-  setup({ el, App, props }) {
-    createRoot(el).render(<App {...props} />);
-  },
+  strictMode: true,
 
   progress: {
     color: '#4B5563',
