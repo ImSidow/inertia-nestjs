@@ -2546,6 +2546,7 @@ packages:
 
   inertia-nestjs@file:../..:
     resolution: {directory: ../.., type: directory}
+    hasBin: true
     peerDependencies:
       '@nestjs/common': ^10.0.0 || ^11.0.0
       '@nestjs/core': ^10.0.0 || ^11.0.0

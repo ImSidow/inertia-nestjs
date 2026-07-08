@@ -29,7 +29,10 @@ export default defineConfig(({ isSsrBuild }) => ({
           output: {
             entryFileNames: 'app.js',
             chunkFileNames: 'chunks/[name]-[hash].js',
-            assetFileNames: 'assets/[name]-[hash][extname]',
+            assetFileNames: (assetInfo) =>
+              assetInfo.names?.some((name) => name.endsWith('.css'))
+                ? 'app.css'
+                : 'assets/[name]-[hash][extname]',
           },
         },
       },
