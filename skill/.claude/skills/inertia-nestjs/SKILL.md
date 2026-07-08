@@ -75,6 +75,47 @@ return {
 };
 ```
 
+## Sharing Props
+
+Data needed on **every** page (auth user, flash messages) — don't repeat this per-controller.
+
+**Static/global data** — via `forRoot()`:
+```typescript
+InertiaModule.forRoot({
+  sharedProps: { appName: 'My App' },
+});
+```
+
+**Per-request data** (auth user, session flash) — extend `HandleInertiaRequests`, override `share()`:
+```typescript
+import { Injectable } from '@nestjs/common';
+import { HandleInertiaRequests, InertiaService } from 'inertia-nestjs';
+import { Request } from 'express';
+
+@Injectable()
+export class InertiaShareMiddleware extends HandleInertiaRequests {
+  constructor(inertia: InertiaService) {
+    super(inertia);
+  }
+
+  async share(req: Request) {
+    const user = req.user as { id: string; name: string; email: string } | undefined;
+
+    return {
+      ...(await super.share(req)),
+      auth: { user: user ? { id: user.id, name: user.name, email: user.email } : null },
+    };
+  }
+}
+```
+Register it in place of the base middleware: `consumer.apply(InertiaShareMiddleware).forRoutes('*')`.
+
+**Security: never spread the raw user entity** (`auth: { user: req.user }`). Shared props get serialized straight into the `<script type="application/json" data-page="app">` tag in the page's HTML — anyone can view-source it. If `req.user` is a Passport/ORM entity, spreading it verbatim leaks the password hash (and any other sensitive column) to the client. Always pick specific fields (`id`, `name`, `email`) explicitly.
+
+**`InertiaService.share(key, value, req)`** — pass `req` when calling this directly in a controller/service. `InertiaService` is a singleton; without `req`, the value is written globally onto the singleton's own state and can leak into other concurrent requests' responses. The middleware pattern above already passes `req` for you — this only matters if you call `.share()` yourself outside of a `HandleInertiaRequests` subclass.
+
+**Gotcha — middleware runs before guards.** `HandleInertiaRequests` is Nest middleware, which always executes before guards in Nest's request pipeline. If your auth sets `req.user` via a Guard (not earlier middleware), it won't be populated yet when `share(req)` runs above. Either populate `req.user` via middleware instead of a guard, or have your `share()` override call your auth library's session lookup directly (e.g. `auth.api.getSession()`) instead of reading `req.user`.
+
 ## Validation
 
 ```typescript
