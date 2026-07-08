@@ -55,14 +55,27 @@ export class InertiaService {
         }
     }
 
-    share(key: string, value: PropValue): this {
+    share(key: string, value: PropValue, req?: HttpRequestLike): this {
+        if (req) {
+            const target = (req as any).__inertiaShared ?? {};
+            target[key] = value;
+            (req as any).__inertiaShared = target;
+            return this;
+        }
+
         this.sharedProps[key] = value;
         return this;
     }
 
-    getShared(key?: string): Record<string, PropValue> | PropValue | undefined {
-        if (!key) return this.sharedProps;
-        return this.sharedProps[key];
+    getShared(
+        key?: string,
+        req?: HttpRequestLike,
+    ): Record<string, PropValue> | PropValue | undefined {
+        const requestShared = (req && (req as any).__inertiaShared) || {};
+        const combined = { ...this.sharedProps, ...requestShared };
+
+        if (!key) return combined;
+        return combined[key];
     }
 
     flushShared(): this {
@@ -109,8 +122,17 @@ export class InertiaService {
         );
         const isPartial = isInertiaRequest && partialComponent === component;
 
-        const flash: Record<string, unknown> = (req as any).__inertiaFlash ?? {};
-        const combinedProps = { errors: {}, ...this.sharedProps, ...flash, ...props };
+        const flash: Record<string, unknown> =
+            (req as any).__inertiaFlash ?? {};
+        const requestShared: Record<string, PropValue> =
+            (req as any).__inertiaShared ?? {};
+        const combinedProps = {
+            errors: {},
+            ...this.sharedProps,
+            ...requestShared,
+            ...flash,
+            ...props,
+        };
 
         const resolvedProps = await this.resolveProps(
             combinedProps,
@@ -142,7 +164,12 @@ export class InertiaService {
     async respond<
         TRequest extends HttpRequestLike = HttpRequestLike,
         TResponse extends HttpResponseLike = HttpResponseLike,
-    >(req: TRequest, res: TResponse, page: InertiaPage, options: RenderOptions = {}): Promise<void> {
+    >(
+        req: TRequest,
+        res: TResponse,
+        page: InertiaPage,
+        options: RenderOptions = {},
+    ): Promise<void> {
         const isInertiaRequest = !!inertiaHttpAdapter.getHeader(
             req,
             INERTIA_HEADER,
@@ -200,15 +227,26 @@ export class InertiaService {
     redirectBack<
         TRequest extends HttpRequestLike = HttpRequestLike,
         TResponse extends HttpResponseLike = HttpResponseLike,
-    >(req: TRequest, res: TResponse, errors?: Record<string, string>, path?: string): void {
-        const referer = path ?? (inertiaHttpAdapter.getHeader(req, 'referer') ?? '/');
+    >(
+        req: TRequest,
+        res: TResponse,
+        errors?: Record<string, string>,
+        path?: string,
+    ): void {
+        const referer =
+            path ?? inertiaHttpAdapter.getHeader(req, 'referer') ?? '/';
         if (errors) {
-            inertiaHttpAdapter.setCookie(res, '__inertia_flash', JSON.stringify(errors), {
-                httpOnly: true,
-                sameSite: 'lax',
-                maxAge: 10_000,
-                path: '/',
-            });
+            inertiaHttpAdapter.setCookie(
+                res,
+                '__inertia_flash',
+                JSON.stringify(errors),
+                {
+                    httpOnly: true,
+                    sameSite: 'lax',
+                    maxAge: 10_000,
+                    path: '/',
+                },
+            );
         }
         inertiaHttpAdapter.redirect(res, 303, referer);
     }

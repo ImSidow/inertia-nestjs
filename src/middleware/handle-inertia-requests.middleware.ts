@@ -117,22 +117,29 @@ export class HandleInertiaRequests implements NestMiddleware {
         }
 
         // Read & clear flash cookie (set by inertia.redirectBack)
-        const cookies = (req as any).cookies as Record<string, string> | undefined;
+        const cookies = (req as any).cookies as
+            | Record<string, string>
+            | undefined;
         const flashRaw = cookies?.__inertia_flash;
         if (flashRaw) {
-            inertiaHttpAdapter.setCookie(res, '__inertia_flash', '', { maxAge: 0, path: '/' });
+            inertiaHttpAdapter.setCookie(res, '__inertia_flash', '', {
+                maxAge: 0,
+                path: '/',
+            });
             try {
-                (req as any).__inertiaFlash = { errors: JSON.parse(decodeURIComponent(flashRaw)) };
+                (req as any).__inertiaFlash = {
+                    errors: JSON.parse(decodeURIComponent(flashRaw)),
+                };
             } catch {
                 // ignore malformed cookie
             }
         }
 
-        // Share request-level props (subclasses can override)
+        // Share request-level props (subclasses can override). Passed with
         const shared = await this.share(req);
         if (shared && typeof shared === 'object') {
             Object.entries(shared).forEach(([key, value]) => {
-                this.inertia.share(key, value as never);
+                this.inertia.share(key, value as never, req);
             });
         }
 

@@ -79,6 +79,68 @@ describe('InertiaService', () => {
         });
     });
 
+    it('share(key, value, req) scopes the value to that request only, not the singleton', async () => {
+        const service = new InertiaService({ rootView: 'app', version: '1.0.0' });
+
+        const reqA = { headers: {}, url: '/a', originalUrl: '/a', method: 'GET' };
+        const reqB = { headers: {}, url: '/b', originalUrl: '/b', method: 'GET' };
+
+        service.share('auth', { user: 'alice' }, reqA);
+        service.share('auth', { user: 'bob' }, reqB);
+
+        const pageA = await service.buildPage(reqA, 'Home');
+        const pageB = await service.buildPage(reqB, 'Home');
+
+        expect(pageA.props.auth).toEqual({ user: 'alice' });
+        expect(pageB.props.auth).toEqual({ user: 'bob' });
+    });
+
+    it('share(key, value, req) never contaminates a request that shared nothing', async () => {
+        const service = new InertiaService({ rootView: 'app', version: '1.0.0' });
+
+        const reqA = { headers: {}, url: '/a', originalUrl: '/a', method: 'GET' };
+        const reqC = { headers: {}, url: '/c', originalUrl: '/c', method: 'GET' };
+
+        service.share('auth', { user: 'alice' }, reqA);
+
+        const pageC = await service.buildPage(reqC, 'Home');
+
+        expect(pageC.props.auth).toBeUndefined();
+    });
+
+    it('share(key, value) without a request still applies globally to every request (bootstrap-time use)', async () => {
+        const service = new InertiaService({ rootView: 'app', version: '1.0.0' });
+
+        service.share('appName', 'My App');
+
+        const reqA = { headers: {}, url: '/a', originalUrl: '/a', method: 'GET' };
+        const reqB = { headers: {}, url: '/b', originalUrl: '/b', method: 'GET' };
+
+        const pageA = await service.buildPage(reqA, 'Home');
+        const pageB = await service.buildPage(reqB, 'Home');
+
+        expect(pageA.props.appName).toBe('My App');
+        expect(pageB.props.appName).toBe('My App');
+    });
+
+    it('getShared() combines global and request-scoped values without leaking between requests', () => {
+        const service = new InertiaService({ rootView: 'app', version: '1.0.0' });
+
+        const reqA = { headers: {}, url: '/a', originalUrl: '/a', method: 'GET' };
+        const reqB = { headers: {}, url: '/b', originalUrl: '/b', method: 'GET' };
+
+        service.share('appName', 'My App');
+        service.share('auth', { user: 'alice' }, reqA);
+
+        expect(service.getShared(undefined, reqA)).toEqual({
+            appName: 'My App',
+            auth: { user: 'alice' },
+        });
+        expect(service.getShared(undefined, reqB)).toEqual({ appName: 'My App' });
+        expect(service.getShared('auth', reqA)).toEqual({ user: 'alice' });
+        expect(service.getShared('auth', reqB)).toBeUndefined();
+    });
+
     it('buildPage() resolves only requested lazy props during partial reload', async () => {
         const service = new InertiaService({
             rootView: 'app',
