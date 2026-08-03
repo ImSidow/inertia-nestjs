@@ -469,6 +469,14 @@ If the SSR server is unavailable or the bundle is missing, the adapter automatic
 
 `exclude` takes glob patterns matched against the page URL: a plain path (`/admin`) matches only that exact path; append `*` (`/admin/*`) to match everything under it. Useful for excluding auth-gated dashboards from SSR while keeping it for public/SEO-critical pages.
 
+For a one-off route that doesn't fit cleanly into a URL pattern (e.g. a single page using a browser-only widget), skip SSR per-route instead:
+
+```ts
+@Get('reports/:id/live-chart')
+@Inertia('Reports/LiveChart', { ssr: false })
+show() { ... }
+```
+
 ---
 
 # Example SSR Entry

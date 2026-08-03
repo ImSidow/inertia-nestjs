@@ -160,7 +160,7 @@ Flashes the exception's message as an error and redirects back (or to `returnPat
 
 ## SSR
 
-When `ssr` is set in `forRoot()`, `InertiaService` calls the configured `HttpGateway` to render on the Node SSR server; on any failure (connection refused, non-200, bad payload) it logs a warning and falls back to client-side rendering — SSR failures never 500 the request. `ssr.exclude` (glob patterns against the page URL) skips SSR for matching routes the same way — e.g. SSR a public landing page but not an auth-gated admin dashboard. `SSR_GATEWAY`/`SsrGateway` are exported if you need a custom gateway implementation instead of the default HTTP one.
+When `ssr` is set in `forRoot()`, `InertiaService` calls the configured `HttpGateway` to render on the Node SSR server; on any failure (connection refused, non-200, bad payload) it logs a warning and falls back to client-side rendering — SSR failures never 500 the request. `ssr.exclude` (glob patterns against the page URL) skips SSR for matching routes the same way — e.g. SSR a public landing page but not an auth-gated admin dashboard. For a single route that doesn't fit a URL pattern, `@Inertia(component, { ssr: false })` skips SSR for just that route, regardless of `ssr.exclude` — there's no equivalent `ssr: true` override to force SSR on a route `exclude` already matched. `SSR_GATEWAY`/`SsrGateway` are exported if you need a custom gateway implementation instead of the default HTTP one.
 
 ## Testing
 

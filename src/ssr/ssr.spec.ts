@@ -361,6 +361,28 @@ describe('InertiaService with SSR gateway', () => {
         );
     });
 
+    it('skips the SSR gateway entirely when render options set ssr: false', async () => {
+        const mockGateway: SsrGateway = {
+            dispatch: jest.fn().mockResolvedValue({
+                head: ['<title>SSR Title</title>'],
+                body: '<div id="app"><h1>SSR</h1></div>',
+            }),
+        };
+
+        const service = new InertiaService({ rootView: 'app' }, mockGateway);
+        const req = makeReq();
+        const { res, appRender } = makeRes();
+
+        await service.render(req, res, 'Reports/LiveChart', { ssr: false });
+
+        expect(mockGateway.dispatch).not.toHaveBeenCalled();
+        expect(appRender).toHaveBeenCalledWith(
+            'app',
+            expect.objectContaining({ ssrHead: [], ssrBody: null }),
+            expect.any(Function),
+        );
+    });
+
     it('passes ssrHead=[] and ssrBody=null to app.render when gateway returns null', async () => {
         const mockGateway: SsrGateway = {
             dispatch: jest.fn().mockResolvedValue(null),

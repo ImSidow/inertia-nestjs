@@ -80,6 +80,8 @@ export interface RenderOptions {
     url?: string;
     /** Override the HTTP status code (defaults to 200) */
     status?: number;
+    /** Set to `false` to skip SSR for this route regardless of `ssr.exclude` (falls back to CSR). */
+    ssr?: boolean;
 }
 
 /**

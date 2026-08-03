@@ -199,9 +199,10 @@ export class InertiaService {
             return;
         }
 
-        const ssrResponse = this.ssrGateway
-            ? await this.ssrGateway.dispatch(page)
-            : null;
+        const ssrResponse =
+            this.ssrGateway && options.ssr !== false
+                ? await this.ssrGateway.dispatch(page)
+                : null;
 
         await inertiaHttpAdapter.renderAsync(res, this.rootView, {
             page,
