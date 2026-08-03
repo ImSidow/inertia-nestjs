@@ -132,7 +132,7 @@ export class InertiaService {
         );
         const isPartial = isInertiaRequest && partialComponent === component;
 
-        const flash: Record<string, unknown> =
+        const flash: { errors?: Record<string, unknown>; flash?: Record<string, unknown> } =
             (req as any).__inertiaFlash ?? {};
         const requestShared: Record<string, PropValue> =
             (req as any).__inertiaShared ?? {};
@@ -140,7 +140,8 @@ export class InertiaService {
             errors: {},
             ...this.sharedProps,
             ...requestShared,
-            ...flash,
+            ...(flash.errors ? { errors: flash.errors } : {}),
+            ...(flash.flash ? { flash: flash.flash } : {}),
             ...props,
         };
 
@@ -249,7 +250,7 @@ export class InertiaService {
             inertiaHttpAdapter.setCookie(
                 res,
                 '__inertia_flash',
-                JSON.stringify(errors),
+                JSON.stringify({ errors }),
                 {
                     httpOnly: true,
                     sameSite: 'lax',
@@ -259,6 +260,29 @@ export class InertiaService {
             );
         }
         inertiaHttpAdapter.redirect(res, 303, referer);
+    }
+
+    /**
+     * Flash arbitrary one-off data (e.g. a success toast) to be read on the
+     * next request via `props.flash`. Unlike `share()`, this data does not
+     * persist beyond the next response. Does not redirect — call this before
+     * issuing your own redirect.
+     */
+    flash<TResponse extends HttpResponseLike = HttpResponseLike>(
+        res: TResponse,
+        data: Record<string, unknown>,
+    ): void {
+        inertiaHttpAdapter.setCookie(
+            res,
+            '__inertia_flash',
+            JSON.stringify({ flash: data }),
+            {
+                httpOnly: true,
+                sameSite: 'lax',
+                maxAge: 10_000,
+                path: '/',
+            },
+        );
     }
 
     location<TResponse extends HttpResponseLike = HttpResponseLike>(

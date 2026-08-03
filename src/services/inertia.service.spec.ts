@@ -206,6 +206,60 @@ describe('InertiaService', () => {
         expect(page.mergeProps).toEqual(['posts']);
     });
 
+    function readFlashCookie(headers: Map<string, string>): unknown {
+        const cookie = headers.get('set-cookie')!;
+        const value = decodeURIComponent(cookie.split('=')[1].split(';')[0]);
+        return JSON.parse(value);
+    }
+
+    it('redirectBack() flashes errors that buildPage() surfaces as props.errors on the next request', async () => {
+        const service = new InertiaService({ rootView: 'app', version: '1.0.0' });
+        const { res, headers } = createResponseMock();
+
+        service.redirectBack(
+            { headers: {}, url: '/users', originalUrl: '/users', method: 'POST' },
+            res,
+            { name: 'is required' },
+        );
+
+        const flashed = readFlashCookie(headers);
+
+        const page = await service.buildPage(
+            {
+                headers: {},
+                url: '/users',
+                originalUrl: '/users',
+                method: 'GET',
+                __inertiaFlash: flashed,
+            } as never,
+            'Users/Create',
+        );
+
+        expect(page.props.errors).toEqual({ name: 'is required' });
+    });
+
+    it('flash() sets arbitrary data that buildPage() surfaces as props.flash on the next request', async () => {
+        const service = new InertiaService({ rootView: 'app', version: '1.0.0' });
+        const { res, headers } = createResponseMock();
+
+        service.flash(res, { message: 'Saved!' });
+
+        const flashed = readFlashCookie(headers);
+
+        const page = await service.buildPage(
+            {
+                headers: {},
+                url: '/users',
+                originalUrl: '/users',
+                method: 'GET',
+                __inertiaFlash: flashed,
+            } as never,
+            'Users/Index',
+        );
+
+        expect(page.props.flash).toEqual({ message: 'Saved!' });
+    });
+
     it('buildPage() excludes a lazy prop nested inside a plain object on a full (non-partial) load', async () => {
         const service = new InertiaService({
             rootView: 'app',

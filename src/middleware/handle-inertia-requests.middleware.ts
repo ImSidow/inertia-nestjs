@@ -116,7 +116,7 @@ export class HandleInertiaRequests implements NestMiddleware {
             }
         }
 
-        // Read & clear flash cookie (set by inertia.redirectBack)
+        // Read & clear flash cookie (set by inertia.redirectBack / inertia.flash)
         const cookies = (req as any).cookies as
             | Record<string, string>
             | undefined;
@@ -127,9 +127,9 @@ export class HandleInertiaRequests implements NestMiddleware {
                 path: '/',
             });
             try {
-                (req as any).__inertiaFlash = {
-                    errors: JSON.parse(decodeURIComponent(flashRaw)),
-                };
+                (req as any).__inertiaFlash = JSON.parse(
+                    decodeURIComponent(flashRaw),
+                );
             } catch {
                 // ignore malformed cookie
             }

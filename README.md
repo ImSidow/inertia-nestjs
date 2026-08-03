@@ -416,6 +416,24 @@ async logout(@Res() res: Response) {
 
 ---
 
+# Flash Data
+
+Flash one-off data (e.g. a success toast) to be read on the **next** request only, separate from validation `errors`.
+
+```ts
+@Post('users')
+async create(@Body() dto: CreateUserDto, @Res() res: Response) {
+  await this.users.create(dto);
+
+  this.inertia.flash(res, { message: 'User created!' });
+  res.redirect(303, '/users');
+}
+```
+
+Client reads it via `usePage().props.flash.message` on the next page.
+
+---
+
 # History Encryption
 
 Encrypt a page's browser history entry.

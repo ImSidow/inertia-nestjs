@@ -133,6 +133,15 @@ create(@Body() dto: CreateUserDto) {
 
 Client reads `usePage().props.errors` (or `useForm`'s `errors`) after the redirect.
 
+## Flash Data
+
+```typescript
+this.inertia.flash(res, { message: 'Saved!' }); // one-off data for the next request only
+res.redirect(303, '/users');
+```
+
+Client reads `usePage().props.flash.message` on the next page. Separate mechanism from validation `errors` — same underlying `__inertia_flash` cookie, different payload key, so calling both `flash()` and a redirect-back-with-errors in the same response overwrites rather than merges (last write wins).
+
 ## Exception Handling
 
 ```typescript
