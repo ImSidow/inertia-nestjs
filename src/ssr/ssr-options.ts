@@ -28,4 +28,11 @@ export interface SsrOptions {
      * Defaults to 5000 ms.
      */
     timeout?: number;
+
+    /**
+     * Glob patterns for paths to skip SSR for (falls back to CSR, same as
+     * any other SSR failure). A plain path (`/admin`) matches only that
+     * exact path; append `*` (`/admin/*`) to match everything under it.
+     */
+    exclude?: string[];
 }

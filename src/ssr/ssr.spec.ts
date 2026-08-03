@@ -151,6 +151,61 @@ describe('HttpGateway', () => {
         expect(result?.head).toEqual(ssrPayload.head);
     });
 
+    it('skips SSR and does not call fetch for a page url matching an exclude wildcard pattern', async () => {
+        const gateway = new HttpGateway({
+            enabled: true,
+            url: 'http://127.0.0.1:13714',
+            exclude: ['/admin/*'],
+        });
+
+        const result = await gateway.dispatch({
+            ...fakePage,
+            url: '/admin/dashboard',
+        });
+
+        expect(result).toBeNull();
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('does not exclude a path that only shares a prefix without an explicit wildcard', async () => {
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ head: [], body: '<div />' }),
+        }) as jest.Mock;
+
+        const gateway = new HttpGateway({
+            enabled: true,
+            url: 'http://127.0.0.1:13714',
+            exclude: ['/admin'],
+        });
+
+        const result = await gateway.dispatch({
+            ...fakePage,
+            url: '/admin/dashboard',
+        });
+
+        expect(result).not.toBeNull();
+        expect(global.fetch).toHaveBeenCalled();
+    });
+
+    it('still dispatches for a page url that does not match any exclude pattern', async () => {
+        global.fetch = jest.fn().mockResolvedValue({
+            ok: true,
+            json: async () => ({ head: [], body: '<div />' }),
+        }) as jest.Mock;
+
+        const gateway = new HttpGateway({
+            enabled: true,
+            url: 'http://127.0.0.1:13714',
+            exclude: ['/admin/*'],
+        });
+
+        const result = await gateway.dispatch({ ...fakePage, url: '/' });
+
+        expect(result).not.toBeNull();
+        expect(global.fetch).toHaveBeenCalled();
+    });
+
     it('normalizes the /render URL correctly', async () => {
         let capturedUrl: string | undefined;
 

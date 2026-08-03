@@ -442,11 +442,14 @@ InertiaModule.forRoot({
         enabled: true,
         url: 'http://127.0.0.1:13714',
         bundlePath: 'bootstrap/ssr/ssr.js',
+        exclude: ['/admin/*'], // skip SSR for these routes (falls back to CSR)
     },
 });
 ```
 
 If the SSR server is unavailable or the bundle is missing, the adapter automatically **falls back to client-side rendering**.
+
+`exclude` takes glob patterns matched against the page URL: a plain path (`/admin`) matches only that exact path; append `*` (`/admin/*`) to match everything under it. Useful for excluding auth-gated dashboards from SSR while keeping it for public/SEO-critical pages.
 
 ---
 

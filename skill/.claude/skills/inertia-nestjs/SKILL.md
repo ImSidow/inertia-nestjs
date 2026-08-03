@@ -25,6 +25,7 @@ import { HandleInertiaRequests, InertiaModule } from 'inertia-nestjs';
         url: 'http://127.0.0.1:13714', // SSR server; /render is appended automatically
         bundlePath: 'bootstrap/ssr/ssr.js',
         timeout: 5000, // ms before falling back to CSR
+        exclude: ['/admin/*'], // glob patterns to skip SSR for (falls back to CSR); '/admin' matches only that exact path, '/admin/*' matches everything under it
       },
     }),
   ],
@@ -150,7 +151,7 @@ Flashes the exception's message as an error and redirects back (or to `returnPat
 
 ## SSR
 
-When `ssr` is set in `forRoot()`, `InertiaService` calls the configured `HttpGateway` to render on the Node SSR server; on any failure (connection refused, non-200, bad payload) it logs a warning and falls back to client-side rendering — SSR failures never 500 the request. `SSR_GATEWAY`/`SsrGateway` are exported if you need a custom gateway implementation instead of the default HTTP one.
+When `ssr` is set in `forRoot()`, `InertiaService` calls the configured `HttpGateway` to render on the Node SSR server; on any failure (connection refused, non-200, bad payload) it logs a warning and falls back to client-side rendering — SSR failures never 500 the request. `ssr.exclude` (glob patterns against the page URL) skips SSR for matching routes the same way — e.g. SSR a public landing page but not an auth-gated admin dashboard. `SSR_GATEWAY`/`SsrGateway` are exported if you need a custom gateway implementation instead of the default HTTP one.
 
 ## Testing
 

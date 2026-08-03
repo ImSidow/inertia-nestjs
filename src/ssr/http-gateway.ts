@@ -5,6 +5,14 @@ import { SsrGateway } from './ssr-gateway.interface';
 import { SsrOptions } from './ssr-options';
 import { SsrResponse } from './ssr-response';
 
+/** Converts a glob pattern (`*` wildcard, everything else literal) to a matcher. */
+function globToRegExp(pattern: string): RegExp {
+    const escaped = pattern
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '.*');
+    return new RegExp(`^${escaped}$`);
+}
+
 /**
  * HTTP-based SSR Gateway.
  */
@@ -14,6 +22,7 @@ export class HttpGateway implements SsrGateway {
     private readonly url: string;
     private readonly enabled: boolean;
     private readonly detector: BundleDetector;
+    private readonly excludePatterns: RegExp[];
 
     constructor(private readonly options: SsrOptions) {
         const base = (options.url ?? 'http://127.0.0.1:13714').replace(
@@ -23,10 +32,15 @@ export class HttpGateway implements SsrGateway {
         this.url = `${base}/render`;
         this.enabled = options.enabled ?? true;
         this.detector = new BundleDetector(options.bundlePath);
+        this.excludePatterns = (options.exclude ?? []).map(globToRegExp);
     }
 
     async dispatch(page: InertiaPage): Promise<SsrResponse | null> {
         if (!this.enabled) {
+            return null;
+        }
+
+        if (this.excludePatterns.some((pattern) => pattern.test(page.url))) {
             return null;
         }
 
