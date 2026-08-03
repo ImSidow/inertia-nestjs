@@ -206,6 +206,129 @@ describe('InertiaService', () => {
         expect(page.mergeProps).toEqual(['posts']);
     });
 
+    it('buildPage() excludes a lazy prop nested inside a plain object on a full (non-partial) load', async () => {
+        const service = new InertiaService({
+            rootView: 'app',
+            version: '1.0.0',
+        });
+
+        const page = await service.buildPage(
+            {
+                headers: {},
+                url: '/users/1',
+                originalUrl: '/users/1',
+                method: 'GET',
+            },
+            'Users/Show',
+            {
+                props: {
+                    profile: {
+                        name: 'Alice',
+                        avatar: lazy(async () => 'avatar.png'),
+                    },
+                },
+            },
+        );
+
+        expect(page.props).toEqual({
+            errors: {},
+            profile: { name: 'Alice' },
+        });
+    });
+
+    it('buildPage() resolves a lazy prop nested inside a plain object when the parent key is requested in a partial reload', async () => {
+        const service = new InertiaService({
+            rootView: 'app',
+            version: '1.0.0',
+        });
+
+        const page = await service.buildPage(
+            {
+                headers: {
+                    'x-inertia': 'true',
+                    'x-inertia-partial-component': 'Users/Show',
+                    'x-inertia-partial-data': 'profile',
+                },
+                url: '/users/1',
+                originalUrl: '/users/1',
+                method: 'GET',
+            },
+            'Users/Show',
+            {
+                props: {
+                    profile: {
+                        name: 'Alice',
+                        avatar: lazy(async () => 'avatar.png'),
+                    },
+                },
+            },
+        );
+
+        expect(page.props).toEqual({
+            profile: { name: 'Alice', avatar: 'avatar.png' },
+        });
+    });
+
+    it('buildPage() resolves a throwing deferred prop to null when rescue is true', async () => {
+        const service = new InertiaService({
+            rootView: 'app',
+            version: '1.0.0',
+        });
+
+        const page = await service.buildPage(
+            {
+                headers: {
+                    'x-inertia': 'true',
+                    'x-inertia-partial-component': 'Reports/Show',
+                    'x-inertia-partial-data': 'chartData',
+                },
+                url: '/reports',
+                originalUrl: '/reports',
+                method: 'GET',
+            },
+            'Reports/Show',
+            {
+                props: {
+                    chartData: defer(async () => {
+                        throw new Error('boom');
+                    }, 'default', true),
+                },
+            },
+        );
+
+        expect(page.props).toEqual({ chartData: null });
+    });
+
+    it('buildPage() propagates a throwing deferred prop when rescue is not set', async () => {
+        const service = new InertiaService({
+            rootView: 'app',
+            version: '1.0.0',
+        });
+
+        const build = service.buildPage(
+            {
+                headers: {
+                    'x-inertia': 'true',
+                    'x-inertia-partial-component': 'Reports/Show',
+                    'x-inertia-partial-data': 'chartData',
+                },
+                url: '/reports',
+                originalUrl: '/reports',
+                method: 'GET',
+            },
+            'Reports/Show',
+            {
+                props: {
+                    chartData: defer(async () => {
+                        throw new Error('boom');
+                    }),
+                },
+            },
+        );
+
+        await expect(build).rejects.toThrow('boom');
+    });
+
     it('respond() returns JSON for Inertia requests', async () => {
         const service = new InertiaService({
             rootView: 'app',

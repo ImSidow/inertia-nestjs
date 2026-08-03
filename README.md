@@ -542,7 +542,7 @@ InertiaModule.forRootAsync({
 | ------------------- | ------------------------------------- |
 | `lazy(fn)`          | Only evaluated during partial reloads |
 | `always(fn)`        | Always evaluated                      |
-| `defer(fn, group?)` | Loaded asynchronously                 |
+| `defer(fn, group?, rescue?)` | Loaded asynchronously; `rescue: true` resolves to `null` instead of failing the request if `fn` throws |
 | `merge(fn)`         | Merge new data with existing          |
 
 ---

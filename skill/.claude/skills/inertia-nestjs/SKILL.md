@@ -71,6 +71,7 @@ return {
   auth: always(() => this.getAuthUser()),          // every request, even partial reloads
   stats: defer(() => this.computeStats()),          // separate async request after initial load
   stats2: defer(() => this.computeStats2(), 'group'), // deferred props with the same group load together
+  stats3: defer(() => this.riskyCompute(), 'group', true), // rescue: true -> resolves to null instead of failing the request if the callback throws
   notifications: merge(() => this.getNew()),         // client merges instead of replacing
 };
 ```

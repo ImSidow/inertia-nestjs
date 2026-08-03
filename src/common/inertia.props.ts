@@ -34,8 +34,9 @@ export function always<T>(fn: () => T | Promise<T>): AlwaysProp<T> {
 export function defer<T>(
     fn: () => T | Promise<T>,
     group?: string,
+    rescue?: boolean,
 ): DeferProp<T> {
-    return { _type: 'defer', fn, group };
+    return { _type: 'defer', fn, group, rescue };
 }
 
 /**

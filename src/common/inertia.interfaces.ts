@@ -11,6 +11,7 @@ export type DeferProp<T = unknown> = {
     _type: 'defer';
     fn: () => T | Promise<T>;
     group?: string;
+    rescue?: boolean;
 };
 export type MergeProp<T = unknown> = {
     _type: 'merge';

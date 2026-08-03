@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional, Scope } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, Scope } from '@nestjs/common';
 import {
     HttpRequestLike,
     HttpResponseLike,
@@ -21,6 +21,15 @@ import {
 import { isAlways, isDefer, isLazy, isMerge } from '../common/inertia.props';
 import { SSR_GATEWAY, SsrGateway } from '../ssr/ssr-gateway.interface';
 
+/** True for object literals (`{}`), false for arrays, null, Date, and other class instances. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return false;
+    }
+    const proto = Object.getPrototypeOf(value);
+    return proto === Object.prototype || proto === null;
+}
+
 /**
  * Core Inertia service.
  *
@@ -29,6 +38,7 @@ import { SSR_GATEWAY, SsrGateway } from '../ssr/ssr-gateway.interface';
  */
 @Injectable({ scope: Scope.DEFAULT })
 export class InertiaService {
+    private readonly logger = new Logger(InertiaService.name);
     private sharedProps: Record<string, PropValue> = {};
     private rootView: string;
     private version: string | (() => string | Promise<string>);
@@ -335,13 +345,33 @@ export class InertiaService {
             if (isDefer(value)) {
                 if (only && only.length && !only.includes(key)) continue;
                 if (except && except.includes(key)) continue;
-                resolved[key] = await value.fn();
+                if (value.rescue) {
+                    try {
+                        resolved[key] = await value.fn();
+                    } catch (err) {
+                        this.logger.error(
+                            `Deferred prop "${key}" threw and was rescued`,
+                            err instanceof Error ? err.stack : String(err),
+                        );
+                        resolved[key] = null;
+                    }
+                } else {
+                    resolved[key] = await value.fn();
+                }
                 continue;
             }
 
             if (isPartial) {
                 if (only && only.length && !only.includes(key)) continue;
                 if (except && except.includes(key)) continue;
+            }
+
+            if (isPlainObject(value)) {
+                resolved[key] = await this.resolveProps(
+                    value as Record<string, PropValue>,
+                    isPartial,
+                );
+                continue;
             }
 
             if (typeof value === 'function') {
