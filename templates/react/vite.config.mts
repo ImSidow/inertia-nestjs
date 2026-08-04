@@ -5,9 +5,10 @@ import path from 'node:path';
 
 export default defineConfig(({ isSsrBuild }) => ({
   plugins: [inertia(), react()],
+  publicDir: false,
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'resources/js'),
+      '@': path.resolve(import.meta.dirname, 'resources/js'),
     },
   },
   build: isSsrBuild
