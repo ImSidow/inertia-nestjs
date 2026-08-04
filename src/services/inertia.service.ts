@@ -350,10 +350,9 @@ export class InertiaService {
             }
 
             if (isAlways(value)) {
-                if (only && only.length && !only.includes(key)) {
-                    if (isPartial) continue;
-                }
-                if (except && except.includes(key)) continue;
+                // Always props bypass only/except entirely -- that's the point of
+                // "always" (matches inertia-laravel's AlwaysProp: it's the one
+                // prop type partial-reload filtering never applies to).
                 resolved[key] = await value.fn();
                 continue;
             }

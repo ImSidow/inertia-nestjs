@@ -1,4 +1,4 @@
-import { defer, lazy, merge } from '../common/inertia.props';
+import { always, defer, lazy, merge } from '../common/inertia.props';
 import { InertiaService } from './inertia.service';
 
 describe('InertiaService', () => {
@@ -168,6 +168,38 @@ describe('InertiaService', () => {
         );
 
         expect(page.props).toEqual({
+            permissions: ['create', 'update'],
+        });
+    });
+
+    it('buildPage() still includes always() props during a partial reload that did not request them', async () => {
+        const service = new InertiaService({
+            rootView: 'app',
+            version: '1.0.0',
+        });
+
+        const page = await service.buildPage(
+            {
+                headers: {
+                    'x-inertia': 'true',
+                    'x-inertia-partial-component': 'Users/Index',
+                    'x-inertia-partial-data': 'permissions',
+                },
+                url: '/users',
+                originalUrl: '/users',
+                method: 'GET',
+            },
+            'Users/Index',
+            {
+                props: {
+                    auth: always(() => ({ user: 'alice' })),
+                    permissions: lazy(async () => ['create', 'update']),
+                },
+            },
+        );
+
+        expect(page.props).toEqual({
+            auth: { user: 'alice' },
             permissions: ['create', 'update'],
         });
     });
