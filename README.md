@@ -409,8 +409,8 @@ To redirect outside the SPA:
 
 ```ts
 @Post('logout')
-async logout(@Res() res: Response) {
-  this.inertia.location(res, 'https://example.com');
+async logout(@Req() req: Request, @Res() res: Response) {
+  this.inertia.location(req, res, 'https://example.com');
 }
 ```
 

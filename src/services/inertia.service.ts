@@ -286,12 +286,12 @@ export class InertiaService {
         );
     }
 
-    location<TResponse extends HttpResponseLike = HttpResponseLike>(
-        res: TResponse,
-        url: string,
-    ): void {
-        const isInertiaRequest = inertiaHttpAdapter.getHeaderFromResponse(
-            res,
+    location<
+        TRequest extends HttpRequestLike = HttpRequestLike,
+        TResponse extends HttpResponseLike = HttpResponseLike,
+    >(req: TRequest, res: TResponse, url: string): void {
+        const isInertiaRequest = !!inertiaHttpAdapter.getHeader(
+            req,
             INERTIA_HEADER,
         );
 

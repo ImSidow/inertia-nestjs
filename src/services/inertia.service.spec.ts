@@ -292,6 +292,32 @@ describe('InertiaService', () => {
         expect(page.props.flash).toEqual({ message: 'Saved!' });
     });
 
+    it('location() returns 409 + X-Inertia-Location for an Inertia request', () => {
+        const service = new InertiaService({ rootView: 'app', version: '1.0.0' });
+        const { res, headers } = createResponseMock();
+        const req = {
+            headers: { 'x-inertia': 'true' },
+            url: '/',
+            originalUrl: '/',
+            method: 'GET',
+        };
+
+        service.location(req, res, 'https://example.com');
+
+        expect(res.status).toHaveBeenCalledWith(409);
+        expect(headers.get('x-inertia-location')).toBe('https://example.com');
+    });
+
+    it('location() issues a plain redirect for a non-Inertia request', () => {
+        const service = new InertiaService({ rootView: 'app', version: '1.0.0' });
+        const { res } = createResponseMock();
+        const req = { headers: {}, url: '/', originalUrl: '/', method: 'GET' };
+
+        service.location(req, res, 'https://example.com');
+
+        expect(res.redirect).toHaveBeenCalledWith(302, 'https://example.com');
+    });
+
     it('buildPage() excludes a lazy prop nested inside a plain object on a full (non-partial) load', async () => {
         const service = new InertiaService({
             rootView: 'app',
