@@ -8,6 +8,7 @@ const {
   patchTsconfigBuildExclude,
   patchRootTsconfig,
   patchPackageJsonScripts,
+  patchGitignore,
   detectPackageManager,
   wireMainTs,
   wireAppModule,
@@ -20,6 +21,7 @@ const {
   patchTsconfigBuildExclude: (cwd: string) => { file: string; status: string; additions?: string[] };
   patchRootTsconfig: (cwd: string) => { file: string; status: string };
   patchPackageJsonScripts: (cwd: string) => { file: string; status: string; additions?: string[] };
+  patchGitignore: (cwd: string) => { file: string; status: string; additions?: string[] };
   detectPackageManager: (cwd: string) => string;
   wireMainTs: (cwd: string) => { file: string; status: string };
   wireAppModule: (cwd: string) => { file: string; status: string };
@@ -306,6 +308,47 @@ describe('patchPackageJsonScripts', () => {
     const dir = mkTempDir();
 
     expect(patchPackageJsonScripts(dir)).toEqual({ file: 'package.json', status: 'missing' });
+  });
+});
+
+describe('patchGitignore', () => {
+  it('adds both build-output entries to a .gitignore with no matching entries', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(path.join(dir, '.gitignore'), 'node_modules\ndist\n');
+
+    const result = patchGitignore(dir);
+
+    expect(result.status).toBe('patched');
+    const written = fs.readFileSync(path.join(dir, '.gitignore'), 'utf8');
+    expect(written).toContain('/bootstrap');
+    expect(written).toContain('/public/build');
+    expect(written).toContain('node_modules');
+    expect(written).toContain('dist');
+  });
+
+  it('only adds the missing entry when one is already present', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(path.join(dir, '.gitignore'), 'node_modules\n/bootstrap\n');
+
+    const result = patchGitignore(dir);
+
+    expect(result.status).toBe('patched');
+    const written = fs.readFileSync(path.join(dir, '.gitignore'), 'utf8');
+    expect(written.match(/\/bootstrap/g)).toHaveLength(1);
+    expect(written).toContain('/public/build');
+  });
+
+  it('is idempotent — reports already-present when both entries exist', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(path.join(dir, '.gitignore'), '/bootstrap\n/public/build\n');
+
+    expect(patchGitignore(dir).status).toBe('already-present');
+  });
+
+  it('reports missing when .gitignore does not exist', () => {
+    const dir = mkTempDir();
+
+    expect(patchGitignore(dir)).toEqual({ file: '.gitignore', status: 'missing' });
   });
 });
 

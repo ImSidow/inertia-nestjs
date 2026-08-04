@@ -91,8 +91,29 @@ function patchPackageJsonScripts(cwd) {
   return { file: 'package.json', status: 'patched', additions };
 }
 
+// Vite's outDir for both builds lands inside directories Nest itself serves
+// (public/build via useStaticAssets, bootstrap/ssr for the SSR bundle) —
+// generated output, not source, so it shouldn't be committed.
+const GITIGNORE_ENTRIES = ['/bootstrap', '/public/build'];
+
+function patchGitignore(cwd) {
+  const filePath = path.join(cwd, '.gitignore');
+  if (!fs.existsSync(filePath)) return { file: '.gitignore', status: 'missing' };
+
+  const content = fs.readFileSync(filePath, 'utf8');
+  const lines = content.split('\n').map((line) => line.trim());
+  const additions = GITIGNORE_ENTRIES.filter((entry) => !lines.includes(entry));
+
+  if (additions.length === 0) return { file: '.gitignore', status: 'already-present' };
+
+  const separator = content.endsWith('\n') ? '' : '\n';
+  fs.writeFileSync(filePath, `${content}${separator}\n# inertia-nestjs\n${additions.join('\n')}\n`);
+  return { file: '.gitignore', status: 'patched', additions };
+}
+
 module.exports = {
   patchTsconfigBuildExclude,
   patchRootTsconfig,
   patchPackageJsonScripts,
+  patchGitignore,
 };

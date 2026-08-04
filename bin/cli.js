@@ -8,6 +8,7 @@ const {
   patchTsconfigBuildExclude,
   patchRootTsconfig,
   patchPackageJsonScripts,
+  patchGitignore,
 } = require('./lib/json-patches');
 const {
   DEPENDENCIES,
@@ -123,6 +124,7 @@ async function runReact(cwd) {
   logPatchResult(patchTsconfigBuildExclude(cwd));
   logPatchResult(patchRootTsconfig(cwd));
   logPatchResult(patchPackageJsonScripts(cwd));
+  logPatchResult(patchGitignore(cwd));
 
   const { manager, success } = installDependencies(cwd);
   console.log(success ? `installed dependencies via ${manager}` : manualInstallFallback(manager));
@@ -167,6 +169,7 @@ module.exports = {
   patchTsconfigBuildExclude,
   patchRootTsconfig,
   patchPackageJsonScripts,
+  patchGitignore,
   detectPackageManager,
   wireMainTs,
   wireAppModule,
