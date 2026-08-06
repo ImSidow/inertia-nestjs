@@ -5,6 +5,7 @@ import path from 'node:path';
 
 export default defineConfig(({ isSsrBuild }) => ({
   plugins: [inertia(), react()],
+  base: '/build/',
   publicDir: false,
   resolve: {
     alias: {
