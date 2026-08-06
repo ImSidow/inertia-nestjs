@@ -1,10 +1,10 @@
 import { existsSync } from 'fs';
-import { BundleDetector } from './bundle-detector';
-import { HttpGateway } from './http-gateway';
-import { InertiaPage } from '../common/inertia.interfaces';
-import { InertiaService } from '../services/inertia.service';
-import { SsrGateway } from './ssr-gateway.interface';
-import { SsrResponse } from './ssr-response';
+import { BundleDetector } from 'src/ssr/bundle-detector';
+import { HttpGateway } from 'src/ssr/http-gateway';
+import { InertiaPage } from 'src/common/inertia.interfaces';
+import { InertiaService } from 'src/services/inertia.service';
+import { SsrGateway } from 'src/ssr/ssr-gateway.interface';
+import { SsrResponse } from 'src/ssr/ssr-response';
 
 jest.mock('fs', () => ({
     existsSync: jest.fn(),

@@ -1,5 +1,5 @@
-import { always, defer, lazy, merge } from '../common/inertia.props';
-import { InertiaService } from './inertia.service';
+import { always, defer, lazy, merge } from 'src/common/inertia.props';
+import { InertiaService } from 'src/services/inertia.service';
 
 describe('InertiaService', () => {
     function createResponseMock() {
