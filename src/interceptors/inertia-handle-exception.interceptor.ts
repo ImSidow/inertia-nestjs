@@ -1,46 +1,34 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { EMPTY, Observable, of, switchMap } from 'rxjs';
-import { INERTIA_HANDLE_EXCEPTION_KEY } from '../common/inertia.constants';
-import { INERTIA_VALIDATE_KEY } from '../decorators/inertia-validate.decorator';
-import { InertiaHandleExceptionOptions } from '../decorators/inertia-handle-exception.decorator';
+import { resolveInertiaHandleExceptionCodes } from '../common/resolve-inertia-handle-exception-codes';
 import { HttpRequestLike, HttpResponseLike, inertiaHttpAdapter } from '../adapters';
 
+/**
+ * Handles the success-path redirect for @InertiaHandleException()/@InertiaValidate() routes.
+ * The failure-path tagging (which status codes to catch, and the return path) used to live
+ * here too, but moved to InertiaExceptionTagGuard: a guard-thrown exception (e.g. from an
+ * auth guard) skips interceptors entirely, so tagging done here never ran for that case.
+ */
 @Injectable()
 export class InertiaHandleExceptionInterceptor implements NestInterceptor {
     constructor(private readonly reflector: Reflector) {}
 
     intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-        const handleMeta = this.reflector.get<InertiaHandleExceptionOptions | undefined>(
-            INERTIA_HANDLE_EXCEPTION_KEY,
+        const { codes, returnPath: configuredReturnPath } = resolveInertiaHandleExceptionCodes(
+            this.reflector,
             context.getHandler(),
         );
-        const validateKey = this.reflector.get<string | undefined>(INERTIA_VALIDATE_KEY, context.getHandler());
 
-        const hasHandleDecorator = handleMeta !== undefined;
-        const hasValidateDecorator = validateKey !== undefined;
-
-        if (!hasHandleDecorator && !hasValidateDecorator) return next.handle();
-
-        // undefined codes = catch all; explicit array = specific codes only
-        const catchAll = hasHandleDecorator && handleMeta!.codes === undefined;
-        const specificCodes = new Set<number>();
-        if (!catchAll && hasHandleDecorator) handleMeta!.codes!.forEach(c => specificCodes.add(c));
-        if (hasValidateDecorator) specificCodes.add(400);
+        if (codes === undefined) return next.handle();
 
         const req = context.switchToHttp().getRequest<HttpRequestLike>();
         const res = context.switchToHttp().getResponse<HttpResponseLike>();
 
-        (req as Record<string, unknown>).inertiaHandleExceptionCodes = catchAll ? 'all' : [...specificCodes];
-
-        if (handleMeta?.returnPath) {
-            (req as Record<string, unknown>).inertiaReturnPath = handleMeta.returnPath;
-        }
-
         return next.handle().pipe(
             switchMap((value) => {
                 if (!(res as { headersSent?: boolean }).headersSent) {
-                    const returnPath = handleMeta?.returnPath
+                    const returnPath = configuredReturnPath
                         ?? inertiaHttpAdapter.getHeader(req, 'referer')
                         ?? '/';
                     inertiaHttpAdapter.redirect(res, 303, returnPath);

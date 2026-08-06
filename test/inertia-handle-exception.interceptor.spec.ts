@@ -44,46 +44,6 @@ describe('InertiaHandleExceptionInterceptor', () => {
         expect(req).not.toHaveProperty('inertiaHandleExceptionCodes');
     });
 
-    it('sets codes="all" when @InertiaHandleException() has no codes option', async () => {
-        const interceptor = new InertiaHandleExceptionInterceptor(makeReflector({}));
-        const req: Record<string, unknown> = { headers: {} };
-        const res = { headersSent: true, redirect: jest.fn() };
-        await collect(interceptor.intercept(makeContext(req, res), makeHandler()));
-        expect(req.inertiaHandleExceptionCodes).toBe('all');
-    });
-
-    it('sets specific codes array when @InertiaHandleException({ codes: [409] })', async () => {
-        const interceptor = new InertiaHandleExceptionInterceptor(makeReflector({ codes: [409] }));
-        const req: Record<string, unknown> = { headers: {} };
-        const res = { headersSent: true, redirect: jest.fn() };
-        await collect(interceptor.intercept(makeContext(req, res), makeHandler()));
-        expect(req.inertiaHandleExceptionCodes).toEqual([409]);
-    });
-
-    it('sets [400] when only @InertiaValidate is present', async () => {
-        const interceptor = new InertiaHandleExceptionInterceptor(makeReflector(undefined, 'Users/Index'));
-        const req: Record<string, unknown> = { headers: {} };
-        const res = { headersSent: true, redirect: jest.fn() };
-        await collect(interceptor.intercept(makeContext(req, res), makeHandler()));
-        expect(req.inertiaHandleExceptionCodes).toContain(400);
-    });
-
-    it('combines @InertiaHandleException codes with 400 from @InertiaValidate', async () => {
-        const interceptor = new InertiaHandleExceptionInterceptor(makeReflector({ codes: [409] }, 'Users/Index'));
-        const req: Record<string, unknown> = { headers: {} };
-        const res = { headersSent: true, redirect: jest.fn() };
-        await collect(interceptor.intercept(makeContext(req, res), makeHandler()));
-        expect(req.inertiaHandleExceptionCodes).toEqual(expect.arrayContaining([400, 409]));
-    });
-
-    it('stores returnPath on request when provided', async () => {
-        const interceptor = new InertiaHandleExceptionInterceptor(makeReflector({ returnPath: '/products' }));
-        const req: Record<string, unknown> = { headers: {} };
-        const res = { headersSent: true, redirect: jest.fn() };
-        await collect(interceptor.intercept(makeContext(req, res), makeHandler()));
-        expect(req.inertiaReturnPath).toBe('/products');
-    });
-
     it('redirects to returnPath on success when headers not sent', async () => {
         const interceptor = new InertiaHandleExceptionInterceptor(makeReflector({ returnPath: '/products' }));
         const req: Record<string, unknown> = { headers: {} };
