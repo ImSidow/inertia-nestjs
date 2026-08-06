@@ -5,11 +5,12 @@ import {
     ModuleMetadata,
     Provider,
 } from '@nestjs/common';
-import { APP_FILTER, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
 import { InertiaModuleOptions } from '../common/inertia.interfaces';
 import { InertiaInterceptor } from '../interceptors/inertia.interceptor';
 import { InertiaComponentInterceptor } from '../interceptors/inertia-component.interceptor';
 import { InertiaHandleExceptionInterceptor } from '../interceptors/inertia-handle-exception.interceptor';
+import { InertiaExceptionTagGuard } from '../guards/inertia-exception-tag.guard';
 import { HandleInertiaRequests } from '../middleware/handle-inertia-requests.middleware';
 import { InertiaResponseHandledFilter } from '../common/inertia-response-handled.filter';
 import { InertiaValidationFilter } from '../filters/inertia-validation.filter';
@@ -94,6 +95,15 @@ export class InertiaModule {
                 useExisting: InertiaHandleExceptionInterceptor,
             },
             {
+                provide: InertiaExceptionTagGuard,
+                useFactory: (reflector: Reflector) => new InertiaExceptionTagGuard(reflector),
+                inject: [Reflector],
+            },
+            {
+                provide: APP_GUARD,
+                useExisting: InertiaExceptionTagGuard,
+            },
+            {
                 provide: InertiaValidationFilter,
                 useFactory: (inertia: InertiaService) => new InertiaValidationFilter(inertia),
                 inject: [InertiaService],
@@ -115,6 +125,7 @@ export class InertiaModule {
                 InertiaInterceptor,
                 InertiaComponentInterceptor,
                 InertiaHandleExceptionInterceptor,
+                InertiaExceptionTagGuard,
                 InertiaValidationFilter,
                 HandleInertiaRequests,
                 ...(ssrProvider ? [SSR_GATEWAY] : []),
@@ -177,6 +188,15 @@ export class InertiaModule {
                 useExisting: InertiaHandleExceptionInterceptor,
             },
             {
+                provide: InertiaExceptionTagGuard,
+                useFactory: (reflector: Reflector) => new InertiaExceptionTagGuard(reflector),
+                inject: [Reflector],
+            },
+            {
+                provide: APP_GUARD,
+                useExisting: InertiaExceptionTagGuard,
+            },
+            {
                 provide: InertiaValidationFilter,
                 useFactory: (inertia: InertiaService) => new InertiaValidationFilter(inertia),
                 inject: [InertiaService],
@@ -199,6 +219,7 @@ export class InertiaModule {
                 InertiaInterceptor,
                 InertiaComponentInterceptor,
                 InertiaHandleExceptionInterceptor,
+                InertiaExceptionTagGuard,
                 InertiaValidationFilter,
                 HandleInertiaRequests,
                 SSR_GATEWAY,

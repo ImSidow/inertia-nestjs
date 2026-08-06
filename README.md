@@ -221,6 +221,8 @@ async update(@Param('id') id: string) {
 
 Omit `codes` to catch all HTTP exceptions thrown in that handler.
 
+This also catches exceptions thrown by `@UseGuards()` — e.g. an auth guard rejecting the request — not just ones thrown in the handler body itself.
+
 ---
 
 # Rendering Manually with `InertiaService`
