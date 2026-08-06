@@ -1,6 +1,6 @@
-import { resolveInertiaHandleExceptionCodes } from './resolve-inertia-handle-exception-codes';
-import { INERTIA_HANDLE_EXCEPTION_KEY } from './inertia.constants';
-import { INERTIA_VALIDATE_KEY } from '../decorators/inertia-validate.decorator';
+import { resolveInertiaHandleExceptionCodes } from 'src/common/resolve-inertia-handle-exception-codes';
+import { INERTIA_HANDLE_EXCEPTION_KEY } from 'src/common/inertia.constants';
+import { INERTIA_VALIDATE_KEY } from 'src/decorators/inertia-validate.decorator';
 
 function makeReflector(handleMeta?: unknown, validateKey?: string) {
     return {

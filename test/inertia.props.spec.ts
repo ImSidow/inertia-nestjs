@@ -7,7 +7,7 @@ import {
     isMerge,
     lazy,
     merge,
-} from './inertia.props';
+} from 'src/common/inertia.props';
 
 describe('inertia.props', () => {
     it('lazy() returns a function and is detected as lazy', async () => {
