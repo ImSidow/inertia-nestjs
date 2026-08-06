@@ -98,6 +98,10 @@ export class InertiaModule {
                 useFactory: (inertia: InertiaService) => new InertiaValidationFilter(inertia),
                 inject: [InertiaService],
             },
+            {
+                provide: APP_FILTER,
+                useExisting: InertiaValidationFilter,
+            },
             HandleInertiaRequests,
         ];
 
@@ -176,6 +180,10 @@ export class InertiaModule {
                 provide: InertiaValidationFilter,
                 useFactory: (inertia: InertiaService) => new InertiaValidationFilter(inertia),
                 inject: [InertiaService],
+            },
+            {
+                provide: APP_FILTER,
+                useExisting: InertiaValidationFilter,
             },
             HandleInertiaRequests,
         ];

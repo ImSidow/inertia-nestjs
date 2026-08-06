@@ -1,4 +1,4 @@
-import { defer, lazy, merge } from '../common/inertia.props';
+import { always, defer, lazy, merge } from '../common/inertia.props';
 import { InertiaService } from './inertia.service';
 
 describe('InertiaService', () => {
@@ -172,6 +172,38 @@ describe('InertiaService', () => {
         });
     });
 
+    it('buildPage() still includes always() props during a partial reload that did not request them', async () => {
+        const service = new InertiaService({
+            rootView: 'app',
+            version: '1.0.0',
+        });
+
+        const page = await service.buildPage(
+            {
+                headers: {
+                    'x-inertia': 'true',
+                    'x-inertia-partial-component': 'Users/Index',
+                    'x-inertia-partial-data': 'permissions',
+                },
+                url: '/users',
+                originalUrl: '/users',
+                method: 'GET',
+            },
+            'Users/Index',
+            {
+                props: {
+                    auth: always(() => ({ user: 'alice' })),
+                    permissions: lazy(async () => ['create', 'update']),
+                },
+            },
+        );
+
+        expect(page.props).toEqual({
+            auth: { user: 'alice' },
+            permissions: ['create', 'update'],
+        });
+    });
+
     it('buildPage() excludes deferred props on first load but includes deferred metadata', async () => {
         const service = new InertiaService({
             rootView: 'app',
@@ -258,6 +290,32 @@ describe('InertiaService', () => {
         );
 
         expect(page.props.flash).toEqual({ message: 'Saved!' });
+    });
+
+    it('location() returns 409 + X-Inertia-Location for an Inertia request', () => {
+        const service = new InertiaService({ rootView: 'app', version: '1.0.0' });
+        const { res, headers } = createResponseMock();
+        const req = {
+            headers: { 'x-inertia': 'true' },
+            url: '/',
+            originalUrl: '/',
+            method: 'GET',
+        };
+
+        service.location(req, res, 'https://example.com');
+
+        expect(res.status).toHaveBeenCalledWith(409);
+        expect(headers.get('x-inertia-location')).toBe('https://example.com');
+    });
+
+    it('location() issues a plain redirect for a non-Inertia request', () => {
+        const service = new InertiaService({ rootView: 'app', version: '1.0.0' });
+        const { res } = createResponseMock();
+        const req = { headers: {}, url: '/', originalUrl: '/', method: 'GET' };
+
+        service.location(req, res, 'https://example.com');
+
+        expect(res.redirect).toHaveBeenCalledWith(302, 'https://example.com');
     });
 
     it('buildPage() excludes a lazy prop nested inside a plain object on a full (non-partial) load', async () => {
