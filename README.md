@@ -121,9 +121,11 @@ Inertia requires a root HTML template that embeds the serialized page object.
 ### EJS (`views/app.ejs`)
 
 ```html
-<script type="application/json" data-page="app"><%- JSON.stringify(page) %></script>
+<script type="application/json" data-page="app"><%- JSON.stringify(page).replace(/</g, '\\u003c') %></script>
 <div id="app"></div>
 ```
+
+> **Always escape `<` in the page JSON.** A plain `JSON.stringify(page)` lets any prop containing `</script>` (e.g. a user's display name) break out of the tag and run script — an XSS hole. Replacing `<` with `<` keeps the JSON valid and the tag closed.
 
 ---
 
@@ -145,7 +147,8 @@ async function bootstrap() {
     app.useStaticAssets(join(process.cwd(), 'public'));
     app.setBaseViewsDir(join(process.cwd(), 'views'));
     app.setViewEngine('hbs');
-    hbs.registerHelper('json', (value) => JSON.stringify(value));
+    // Escaping `<` prevents a `</script>` inside any prop from breaking out of the tag (XSS).
+    hbs.registerHelper('json', (value) => JSON.stringify(value).replace(/</g, '\\u003c'));
 
     await app.listen(3000);
 }
@@ -432,7 +435,9 @@ async create(@Body() dto: CreateUserDto, @Res() res: Response) {
 }
 ```
 
-Client reads it via `usePage().props.flash.message` on the next page.
+It is sent as the top-level `flash` field of the page object, so the client reads it via `usePage().flash.message` or the `router.on('flash', …)` event on the next page.
+
+> `props.flash` is still populated for backwards compatibility but is deprecated and will be removed in 2.0 — it also ends up in saved history state, so going back re-shows old toasts.
 
 ---
 

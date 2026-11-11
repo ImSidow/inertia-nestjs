@@ -67,7 +67,7 @@ Install and wire up the Handlebars view engine and static assets:
      app.useStaticAssets(join(process.cwd(), 'public'));
      app.setBaseViewsDir(join(process.cwd(), 'views'));
      app.setViewEngine('hbs');
-     hbs.registerHelper('json', (value) => JSON.stringify(value));
+     hbs.registerHelper('json', (value) => JSON.stringify(value).replace(/</g, '\\\\u003c'));
 `;
 
 function manualInstallFallback(manager) {

@@ -38,7 +38,7 @@ function wireMainTs(cwd) {
       `  ${appVar}.useStaticAssets(join(process.cwd(), 'public'));\n` +
       `  ${appVar}.setBaseViewsDir(join(process.cwd(), 'views'));\n` +
       `  ${appVar}.setViewEngine('hbs');\n` +
-      `  hbs.registerHelper('json', (value) => JSON.stringify(value));`,
+      `  hbs.registerHelper('json', (value) => JSON.stringify(value).replace(/</g, '\\\\u003c'));`,
   );
 
   content = insertAfterLastImport(content, [

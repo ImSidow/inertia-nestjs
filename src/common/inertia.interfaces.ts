@@ -32,6 +32,10 @@ export interface InertiaPage {
     clearHistory?: boolean;
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
+    /** Deferred props that threw and were rescued (partial reloads only). */
+    rescuedProps?: string[];
+    /** One-off flash data; the v3 client exposes it via the `inertia:flash` event. */
+    flash?: Record<string, unknown>;
 }
 
 /**

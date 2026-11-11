@@ -141,15 +141,19 @@ export class InertiaService {
             ...this.sharedProps,
             ...requestShared,
             ...(flash.errors ? { errors: flash.errors } : {}),
+            // Deprecated: v3 clients read flash from the top-level `page.flash`.
+            // Kept in props so 1.x apps reading `props.flash` don't break; drop in 2.0.
             ...(flash.flash ? { flash: flash.flash } : {}),
             ...props,
         };
 
+        const rescuedProps: string[] = [];
         const resolvedProps = await this.resolveProps(
             combinedProps,
             isPartial,
             isPartial ? this.parsePartialData(req) : undefined,
             isPartial ? this.parsePartialExcept(req) : undefined,
+            rescuedProps,
         );
 
         const currentVersion = await this.getVersion();
@@ -169,6 +173,8 @@ export class InertiaService {
             ...(clearHistory ? { clearHistory: true } : {}),
             ...(Object.keys(deferredProps).length ? { deferredProps } : {}),
             ...(mergeProps.length ? { mergeProps } : {}),
+            ...(rescuedProps.length ? { rescuedProps } : {}),
+            ...(flash.flash ? { flash: flash.flash } : {}),
         };
     }
 
@@ -325,6 +331,7 @@ export class InertiaService {
         isPartial: boolean,
         only?: string[],
         except?: string[],
+        rescued?: string[],
     ): Promise<InertiaProps> {
         const resolved: InertiaProps = {};
 
@@ -377,7 +384,9 @@ export class InertiaService {
                             `Deferred prop "${key}" threw and was rescued`,
                             err instanceof Error ? err.stack : String(err),
                         );
-                        resolved[key] = null;
+                        // Matches inertia-laravel: omit the prop and list it in
+                        // `rescuedProps` so the client's <Deferred> rescue slot renders.
+                        rescued?.push(key);
                     }
                 } else {
                     resolved[key] = await value.fn();

@@ -60,5 +60,6 @@ describe('Inertia versioning (e2e)', () => {
             .expect(409);
 
         expect(res.headers['x-inertia-location']).toBe('/users');
+        expect(res.headers['x-inertia-version']).toBe('2.0.0');
     });
 });
