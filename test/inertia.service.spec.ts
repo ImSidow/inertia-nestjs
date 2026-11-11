@@ -289,7 +289,19 @@ describe('InertiaService', () => {
             'Users/Index',
         );
 
-        expect(page.props.flash).toEqual({ message: 'Saved!' });
+        expect(page.flash).toEqual({ message: 'Saved!' });
+        expect(page.props.flash).toEqual({ message: 'Saved!' }); // deprecated alias
+    });
+
+    it('buildPage() omits flash from the page object when nothing was flashed', async () => {
+        const service = new InertiaService({ rootView: 'app', version: '1.0.0' });
+
+        const page = await service.buildPage(
+            { headers: {}, url: '/users', originalUrl: '/users', method: 'GET' },
+            'Users/Index',
+        );
+
+        expect(page).not.toHaveProperty('flash');
     });
 
     it('location() returns 409 + X-Inertia-Location for an Inertia request', () => {
@@ -381,7 +393,7 @@ describe('InertiaService', () => {
         });
     });
 
-    it('buildPage() resolves a throwing deferred prop to null when rescue is true', async () => {
+    it('buildPage() omits a throwing deferred prop and lists it in rescuedProps when rescue is true', async () => {
         const service = new InertiaService({
             rootView: 'app',
             version: '1.0.0',
@@ -408,7 +420,8 @@ describe('InertiaService', () => {
             },
         );
 
-        expect(page.props).toEqual({ chartData: null });
+        expect(page.props).toEqual({});
+        expect(page.rescuedProps).toEqual(['chartData']);
     });
 
     it('buildPage() propagates a throwing deferred prop when rescue is not set', async () => {

@@ -187,6 +187,12 @@ export class HandleInertiaRequests implements NestMiddleware {
             INERTIA_LOCATION_HEADER,
             inertiaHttpAdapter.getRequestUrl(req),
         );
+        // Lets the v3 client skip the forced reload for background requests.
+        inertiaHttpAdapter.setHeader(
+            res,
+            INERTIA_VERSION_HEADER,
+            await this.inertia.getVersion(),
+        );
         inertiaHttpAdapter.end(res);
     }
 }

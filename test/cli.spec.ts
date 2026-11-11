@@ -378,8 +378,23 @@ bootstrap();
     expect(written).toContain('NestFactory.create<NestExpressApplication>(AppModule)');
     expect(written).toContain("app.useStaticAssets(join(process.cwd(), 'public'));");
     expect(written).toContain("app.setViewEngine('hbs');");
-    expect(written).toContain("hbs.registerHelper('json', (value) => JSON.stringify(value));");
+    expect(written).toContain("hbs.registerHelper('json', (value) => JSON.stringify(value).replace(/</g, '\\\\u003c'));");
     expect(written).toContain('await app.listen(process.env.PORT ?? 3000);');
+  });
+
+  it('wires a json helper that escapes </script> so props cannot break out of the page tag', () => {
+    const dir = mkTempDir();
+    fs.mkdirSync(path.join(dir, 'src'));
+    fs.writeFileSync(path.join(dir, 'src', 'main.ts'), DEFAULT_MAIN_TS);
+    wireMainTs(dir);
+
+    const written = fs.readFileSync(path.join(dir, 'src', 'main.ts'), 'utf8');
+    const helperSrc = written.match(/registerHelper\('json', (.*)\);/)![1];
+    const helper = eval(helperSrc) as (v: unknown) => string;
+    const out = helper({ name: '</script><script>alert(1)</script>' });
+
+    expect(out).not.toContain('<');
+    expect(JSON.parse(out)).toEqual({ name: '</script><script>alert(1)</script>' });
   });
 
   it('is idempotent — reports already-present and does not duplicate on a second run', () => {

@@ -140,7 +140,7 @@ this.inertia.flash(res, { message: 'Saved!' }); // one-off data for the next req
 res.redirect(303, '/users');
 ```
 
-Client reads `usePage().props.flash.message` on the next page. Separate mechanism from validation `errors` — same underlying `__inertia_flash` cookie, different payload key, so calling both `flash()` and a redirect-back-with-errors in the same response overwrites rather than merges (last write wins).
+Sent as the top-level `page.flash` field — client reads `usePage().flash.message` (or `router.on('flash', …)`) on the next page. `props.flash` is also populated but deprecated. Separate mechanism from validation `errors` — same underlying `__inertia_flash` cookie, different payload key, so calling both `flash()` and a redirect-back-with-errors in the same response overwrites rather than merges (last write wins).
 
 ## Exception Handling
 
