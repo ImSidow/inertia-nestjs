@@ -189,7 +189,7 @@ async function bootstrap() {
 bootstrap();
 ```
 
-Requires `npm install @fastify/view @fastify/static handlebars`. On NestJS 10 (Fastify 4) use `@fastify/view@9`. The same `views/app.hbs` template works on both platforms.
+Requires `npm install @fastify/view @fastify/static handlebars`. On NestJS 10 (Fastify 4) use `@fastify/view@8` (the newest its Fastify adapter accepts). The same `views/app.hbs` template works on both platforms.
 
 ---
 

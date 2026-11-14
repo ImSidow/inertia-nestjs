@@ -148,15 +148,28 @@ export const inertiaHttpAdapter: InertiaHttpAdapter = {
             return;
         }
 
-        // Fastify with @fastify/view: viewAsync() renders to a string.
+        // Fastify with @fastify/view 9+: viewAsync() renders to a string.
         const reply = res as HttpResponseLike & {
             viewAsync?: (view: string, locals: Record<string, unknown>) => Promise<string>;
+            view?: (view: string, locals: Record<string, unknown>) => unknown;
         };
         if (typeof reply.viewAsync === 'function') {
             const html = await reply.viewAsync(view, locals);
             if (responseState.headersSent) return;
             this.setHeader(res, 'Content-Type', 'text/html; charset=utf-8');
             res.send!(html);
+            return;
+        }
+
+        // @fastify/view 7/8 (the versions NestJS 10's Fastify adapter accepts) only
+        // has view(), which renders and sends by itself: wait until it is sent.
+        if ('raw' in res && typeof reply.view === 'function') {
+            const raw = responseState as { once(event: string, cb: () => void): void };
+            await new Promise<void>((resolve) => {
+                raw.once('finish', resolve);
+                raw.once('close', resolve);
+                reply.view!(view, locals);
+            });
             return;
         }
 

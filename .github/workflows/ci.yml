@@ -26,10 +26,11 @@ jobs:
                 node-version: [20, 22, 24]
                 # Every NestJS major in the peerDependencies range.
                 nestjs: [10, 11, 12]
-                # @fastify/view major per NestJS: Nest 10 runs Fastify 4 (view 9), Nest 11+ Fastify 5.
+                # @fastify/view major per NestJS, within @nestjs/platform-fastify's peer
+                # range: Nest 10 (Fastify 4) accepts ^7 || ^8; Nest 11+ (Fastify 5) ^12.
                 include:
                     - nestjs: 10
-                      fastify-view: 9
+                      fastify-view: 8
                     - nestjs: 11
                       fastify-view: 12
                     - nestjs: 12
@@ -44,18 +45,21 @@ jobs:
               with:
                   node-version: ${{ matrix.node-version }}
 
+            # Pin the matrix versions first, then install once: an extra
+            # `npm install --no-save` on top of an install trips an npm bug
+            # ("Cannot read properties of null (reading 'edgesOut')").
+            - name: Pin NestJS ${{ matrix.nestjs }}
+              run: >-
+                  npm pkg set
+                  devDependencies.@nestjs/common=^${{ matrix.nestjs }}
+                  devDependencies.@nestjs/core=^${{ matrix.nestjs }}
+                  devDependencies.@nestjs/platform-express=^${{ matrix.nestjs }}
+                  devDependencies.@nestjs/platform-fastify=^${{ matrix.nestjs }}
+                  devDependencies.@nestjs/testing=^${{ matrix.nestjs }}
+                  devDependencies.@fastify/view=^${{ matrix.fastify-view }}
+
             - name: Install dependencies
               run: npm install
-
-            - name: Install NestJS ${{ matrix.nestjs }}
-              run: >-
-                  npm install --no-save
-                  @nestjs/common@^${{ matrix.nestjs }}
-                  @nestjs/core@^${{ matrix.nestjs }}
-                  @nestjs/platform-express@^${{ matrix.nestjs }}
-                  @nestjs/platform-fastify@^${{ matrix.nestjs }}
-                  @nestjs/testing@^${{ matrix.nestjs }}
-                  @fastify/view@^${{ matrix.fastify-view }}
 
             - name: Type-check (src and tests)
               run: npx tsc --noEmit -p tsconfig.json
