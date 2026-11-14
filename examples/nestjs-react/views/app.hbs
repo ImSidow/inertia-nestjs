@@ -11,11 +11,11 @@
     <script type='module' src='/build/app.js'></script>
   </head>
   <body>
-    <script type='application/json' data-page='app'>{{{json page}}}</script>
-
+    {{! The v3 SSR body already contains the page <script> and the #app root. }}
     {{#if ssrBody}}
-      <div id='app'>{{{ssrBody}}}</div>
+      {{{ssrBody}}}
     {{else}}
+      <script type='application/json' data-page='app'>{{{json page}}}</script>
       <div id='app'></div>
     {{/if}}
   </body>

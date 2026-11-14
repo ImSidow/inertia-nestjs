@@ -12,7 +12,10 @@ async function bootstrap() {
   app.setBaseViewsDir(join(process.cwd(), 'views'));
   app.setViewEngine('hbs');
 
-  hbs.registerHelper('json', (value) => JSON.stringify(value));
+  // Escaping `<` prevents a `</script>` inside any prop from breaking out of the tag (XSS).
+  hbs.registerHelper('json', (value) =>
+    JSON.stringify(value).replace(/</g, '\\u003c'),
+  );
 
   await app.listen(3000);
 }

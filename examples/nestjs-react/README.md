@@ -12,7 +12,7 @@ Example app for `inertia-nestjs` using:
 
 ```bash
 npm install
-npm run build:all
+npm run build:ssr
 npm run serve:ssr
 npm run start:dev
 ```
