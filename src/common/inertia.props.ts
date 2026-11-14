@@ -39,14 +39,53 @@ export function defer<T>(
     return { _type: 'defer', fn, group, rescue };
 }
 
+export interface MergeOptions {
+    /** Prepend new items instead of appending them. */
+    prepend?: boolean;
+    /** Merge at a nested path (e.g. 'data' for a paginator) instead of the prop root. */
+    at?: string;
+    /** Item key field(s) used to replace existing items instead of duplicating them. */
+    matchOn?: string | string[];
+}
+
 /**
  * Wrap a factory in a merge prop — client-side data is merged rather
  * than replaced on subsequent visits.
  *
  * Equivalent to `Inertia::merge()` in Laravel.
+ *
+ * @example merge(() => posts, { matchOn: 'id' })
+ * @example merge(() => paginator, { at: 'data', prepend: true })
  */
-export function merge<T>(fn: () => T | Promise<T>): MergeProp<T> {
-    return { _type: 'merge', fn };
+export function merge<T>(
+    fn: () => T | Promise<T>,
+    options: MergeOptions = {},
+): MergeProp<T> {
+    return {
+        _type: 'merge',
+        fn,
+        mode: options.prepend ? 'prepend' : 'append',
+        ...(options.at ? { at: options.at } : {}),
+        ...(options.matchOn ? { matchOn: ([] as string[]).concat(options.matchOn) } : {}),
+    };
+}
+
+/**
+ * Wrap a factory in a deep-merge prop — nested objects are merged
+ * recursively on the client.
+ *
+ * Equivalent to `Inertia::deepMerge()` in Laravel.
+ */
+export function deepMerge<T>(
+    fn: () => T | Promise<T>,
+    options: Pick<MergeOptions, 'matchOn'> = {},
+): MergeProp<T> {
+    return {
+        _type: 'merge',
+        fn,
+        mode: 'deep',
+        ...(options.matchOn ? { matchOn: ([] as string[]).concat(options.matchOn) } : {}),
+    };
 }
 
 /** Type guard: is this an always prop? */

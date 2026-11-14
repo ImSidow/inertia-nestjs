@@ -8,6 +8,7 @@ import {
     InertiaModuleOptions,
     InertiaPage,
     InertiaProps,
+    MergeProp,
     PropValue,
     RenderOptions,
 } from '../common/inertia.interfaces';
@@ -17,6 +18,7 @@ import {
     INERTIA_PARTIAL_COMPONENT_HEADER,
     INERTIA_PARTIAL_DATA_HEADER,
     INERTIA_PARTIAL_EXCEPT_HEADER,
+    INERTIA_RESET_HEADER,
 } from '../common/inertia.constants';
 import { isAlways, isDefer, isLazy, isMerge } from '../common/inertia.props';
 import { SSR_GATEWAY, SsrGateway } from '../ssr/ssr-gateway.interface';
@@ -136,10 +138,15 @@ export class InertiaService {
             (req as any).__inertiaFlash ?? {};
         const requestShared: Record<string, PropValue> =
             (req as any).__inertiaShared ?? {};
+        const { __factory__: factory, ...staticShared } = this.sharedProps;
+        const factoryShared: Record<string, PropValue> =
+            typeof factory === 'function'
+                ? ((await (factory as () => unknown)()) as Record<string, PropValue>) ?? {}
+                : {};
+        const shared = { ...factoryShared, ...staticShared, ...requestShared };
         const combinedProps = {
             errors: {},
-            ...this.sharedProps,
-            ...requestShared,
+            ...shared,
             ...(flash.errors ? { errors: flash.errors } : {}),
             // Deprecated: v3 clients read flash from the top-level `page.flash`.
             // Kept in props so 1.x apps reading `props.flash` don't break; drop in 2.0.
@@ -147,18 +154,24 @@ export class InertiaService {
             ...props,
         };
 
-        const rescuedProps: string[] = [];
-        const resolvedProps = await this.resolveProps(
-            combinedProps,
+        const ctx: ResolveContext = {
             isPartial,
-            isPartial ? this.parsePartialData(req) : undefined,
-            isPartial ? this.parsePartialExcept(req) : undefined,
-            rescuedProps,
-        );
+            only: isPartial ? this.parseListHeader(req, INERTIA_PARTIAL_DATA_HEADER) : [],
+            except: isPartial ? this.parseListHeader(req, INERTIA_PARTIAL_EXCEPT_HEADER) : [],
+            reset: this.parseListHeader(req, INERTIA_RESET_HEADER),
+            deferredProps: {},
+            mergeProps: [],
+            prependProps: [],
+            deepMergeProps: [],
+            matchPropsOn: [],
+            rescuedProps: [],
+        };
+        const resolvedProps = await this.resolveProps(combinedProps, ctx);
 
         const currentVersion = await this.getVersion();
-        const deferredProps = this.buildDeferredGroups(combinedProps);
-        const mergeProps = this.buildMergeList(combinedProps);
+        // `errors` is always shared, matching inertia-laravel's default middleware.
+        const sharedProps = [...new Set(['errors', ...Object.keys(shared)])];
+        const { deferredProps, mergeProps, prependProps, deepMergeProps, matchPropsOn, rescuedProps } = ctx;
 
         return {
             component,
@@ -171,8 +184,12 @@ export class InertiaService {
                   ? { encryptHistory: true }
                   : {}),
             ...(clearHistory ? { clearHistory: true } : {}),
+            sharedProps,
             ...(Object.keys(deferredProps).length ? { deferredProps } : {}),
             ...(mergeProps.length ? { mergeProps } : {}),
+            ...(prependProps.length ? { prependProps } : {}),
+            ...(deepMergeProps.length ? { deepMergeProps } : {}),
+            ...(matchPropsOn.length ? { matchPropsOn } : {}),
             ...(rescuedProps.length ? { rescuedProps } : {}),
             ...(flash.flash ? { flash: flash.flash } : {}),
         };
@@ -199,7 +216,14 @@ export class InertiaService {
                 'Content-Type',
                 'application/json',
             );
-            inertiaHttpAdapter.setHeader(res, 'Vary', 'X-Inertia');
+            // Append rather than overwrite, so other middleware's Vary values survive.
+            const vary = inertiaHttpAdapter.getHeaderFromResponse(res, 'Vary');
+            const varies = vary?.split(',').map((v) => v.trim().toLowerCase()) ?? [];
+            inertiaHttpAdapter.setHeader(
+                res,
+                'Vary',
+                !vary ? 'X-Inertia' : varies.includes('x-inertia') || varies.includes('*') ? vary : `${vary}, X-Inertia`,
+            );
             inertiaHttpAdapter.setHeader(res, INERTIA_HEADER, 'true');
             inertiaHttpAdapter.json(res, page);
             return;
@@ -310,132 +334,138 @@ export class InertiaService {
         }
     }
 
-    private parsePartialData(req: HttpRequestLike): string[] {
-        const header = inertiaHttpAdapter.getHeader(
-            req,
-            INERTIA_PARTIAL_DATA_HEADER,
-        );
-        return header ? header.split(',').map((s) => s.trim()) : [];
+    private parseListHeader(req: HttpRequestLike, name: string): string[] {
+        const header = inertiaHttpAdapter.getHeader(req, name);
+        return header
+            ? header
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+            : [];
     }
 
-    private parsePartialExcept(req: HttpRequestLike): string[] {
-        const header = inertiaHttpAdapter.getHeader(
-            req,
-            INERTIA_PARTIAL_EXCEPT_HEADER,
-        );
-        return header ? header.split(',').map((s) => s.trim()) : [];
-    }
-
+    /**
+     * Resolve the prop tree, collecting page metadata into `ctx` along the way.
+     * Paths are dot-notated (`auth.user`) so nested prop types and nested
+     * partial reloads work the same way they do in inertia-laravel.
+     */
     private async resolveProps(
         props: Record<string, PropValue>,
-        isPartial: boolean,
-        only?: string[],
-        except?: string[],
-        rescued?: string[],
+        ctx: ResolveContext,
+        prefix = '',
     ): Promise<InertiaProps> {
         const resolved: InertiaProps = {};
 
         for (const [key, value] of Object.entries(props)) {
-            if (key === '__factory__' && typeof value === 'function') {
-                const factoryResult = await (
-                    value as () => Promise<InertiaProps>
-                )();
-                Object.assign(resolved, factoryResult);
-                continue;
-            }
-
-            if (!isPartial && isDefer(value)) {
-                continue;
-            }
-
-            if (isLazy(value)) {
-                if (!isPartial) continue;
-                if (only && only.length && !only.includes(key)) continue;
-                if (except && except.length && except.includes(key)) continue;
-                resolved[key] = await value();
-                continue;
-            }
+            const path = prefix ? `${prefix}.${key}` : key;
 
             if (isAlways(value)) {
                 // Always props bypass only/except entirely -- that's the point of
-                // "always" (matches inertia-laravel's AlwaysProp: it's the one
-                // prop type partial-reload filtering never applies to).
+                // "always" (matches inertia-laravel's AlwaysProp).
                 resolved[key] = await value.fn();
+                continue;
+            }
+
+            if (ctx.isPartial && !partialIncludes(path, ctx)) continue;
+
+            if (isDefer(value)) {
+                if (!ctx.isPartial) {
+                    (ctx.deferredProps[value.group ?? 'default'] ??= []).push(path);
+                    continue;
+                }
+                try {
+                    resolved[key] = await value.fn();
+                } catch (err) {
+                    if (!value.rescue) throw err;
+                    this.logger.error(
+                        `Deferred prop "${path}" threw and was rescued`,
+                        err instanceof Error ? err.stack : String(err),
+                    );
+                    // Matches inertia-laravel: omit the prop and list it in
+                    // `rescuedProps` so the client's <Deferred> rescue slot renders.
+                    ctx.rescuedProps.push(path);
+                }
                 continue;
             }
 
             if (isMerge(value)) {
-                if (isPartial) {
-                    if (only && only.length && !only.includes(key)) continue;
-                    if (except && except.includes(key)) continue;
-                }
+                collectMergeMetadata(path, value, ctx);
                 resolved[key] = await value.fn();
                 continue;
             }
 
-            if (isDefer(value)) {
-                if (only && only.length && !only.includes(key)) continue;
-                if (except && except.includes(key)) continue;
-                if (value.rescue) {
-                    try {
-                        resolved[key] = await value.fn();
-                    } catch (err) {
-                        this.logger.error(
-                            `Deferred prop "${key}" threw and was rescued`,
-                            err instanceof Error ? err.stack : String(err),
-                        );
-                        // Matches inertia-laravel: omit the prop and list it in
-                        // `rescuedProps` so the client's <Deferred> rescue slot renders.
-                        rescued?.push(key);
-                    }
-                } else {
-                    resolved[key] = await value.fn();
-                }
+            if (isLazy(value)) {
+                if (!ctx.isPartial) continue;
+                resolved[key] = await value();
                 continue;
-            }
-
-            if (isPartial) {
-                if (only && only.length && !only.includes(key)) continue;
-                if (except && except.includes(key)) continue;
             }
 
             if (isPlainObject(value)) {
                 resolved[key] = await this.resolveProps(
                     value as Record<string, PropValue>,
-                    isPartial,
+                    ctx,
+                    path,
                 );
                 continue;
             }
 
-            if (typeof value === 'function') {
-                resolved[key] = await (value as () => unknown)();
-            } else {
-                resolved[key] = value;
-            }
+            resolved[key] = value;
         }
 
         return resolved;
     }
+}
 
-    private buildDeferredGroups(
-        props: Record<string, PropValue>,
-    ): Record<string, string[]> {
-        const groups: Record<string, string[]> = {};
+interface ResolveContext {
+    isPartial: boolean;
+    only: string[];
+    except: string[];
+    reset: string[];
+    deferredProps: Record<string, string[]>;
+    mergeProps: string[];
+    prependProps: string[];
+    deepMergeProps: string[];
+    matchPropsOn: string[];
+    rescuedProps: string[];
+}
 
-        for (const [key, value] of Object.entries(props)) {
-            if (isDefer(value)) {
-                const group = value.group ?? 'default';
-                if (!groups[group]) groups[group] = [];
-                groups[group].push(key);
-            }
-        }
+function isSameOrUnder(path: string, parent: string): boolean {
+    return path === parent || path.startsWith(`${parent}.`);
+}
 
-        return groups;
+function matchesOnly(path: string, ctx: ResolveContext): boolean {
+    return !ctx.only.length || ctx.only.some((o) => isSameOrUnder(path, o));
+}
+
+function matchesExcept(path: string, ctx: ResolveContext): boolean {
+    return ctx.except.some((e) => isSameOrUnder(path, e));
+}
+
+/** Keep a path if it is, is inside, or leads to an `only` path, and isn't excepted. */
+function partialIncludes(path: string, ctx: ResolveContext): boolean {
+    const leadsToOnly = ctx.only.some((o) => o.startsWith(`${path}.`));
+    return (matchesOnly(path, ctx) || leadsToOnly) && !matchesExcept(path, ctx);
+}
+
+function collectMergeMetadata(
+    path: string,
+    prop: MergeProp,
+    ctx: ResolveContext,
+): void {
+    if (ctx.reset.includes(path)) return;
+    // A parent merely leading to an `only` path doesn't opt it into merging.
+    if (ctx.isPartial && (!matchesOnly(path, ctx) || matchesExcept(path, ctx))) {
+        return;
     }
 
-    private buildMergeList(props: Record<string, PropValue>): string[] {
-        return Object.entries(props)
-            .filter(([, value]) => isMerge(value))
-            .map(([key]) => key);
+    if (prop.mode === 'deep') {
+        ctx.deepMergeProps.push(path);
+    } else {
+        const target = prop.mode === 'prepend' ? ctx.prependProps : ctx.mergeProps;
+        target.push(prop.at ? `${path}.${prop.at}` : path);
+    }
+
+    for (const field of prop.matchOn ?? []) {
+        ctx.matchPropsOn.push(`${path}.${field}`);
     }
 }
