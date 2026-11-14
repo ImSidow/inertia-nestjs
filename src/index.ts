@@ -31,6 +31,8 @@ export {
     always,
     defer,
     merge,
+    deepMerge,
+    MergeOptions,
     isLazy,
     isAlways,
     isDefer,
@@ -60,6 +62,7 @@ export {
     INERTIA_PARTIAL_EXCEPT_HEADER,
     INERTIA_ENCRYPT_HISTORY_HEADER,
     INERTIA_CLEAR_HISTORY_HEADER,
+    INERTIA_RESET_HEADER,
 } from './common/inertia.constants';
 
 // Testing

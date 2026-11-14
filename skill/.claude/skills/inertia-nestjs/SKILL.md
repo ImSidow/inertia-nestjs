@@ -72,8 +72,10 @@ return {
   auth: always(() => this.getAuthUser()),          // every request, even partial reloads
   stats: defer(() => this.computeStats()),          // separate async request after initial load
   stats2: defer(() => this.computeStats2(), 'group'), // deferred props with the same group load together
-  stats3: defer(() => this.riskyCompute(), 'group', true), // rescue: true -> resolves to null instead of failing the request if the callback throws
+  stats3: defer(() => this.riskyCompute(), 'group', true), // rescue: true -> if the callback throws, the prop is omitted and listed in page.rescuedProps instead of failing the request
   notifications: merge(() => this.getNew()),         // client merges instead of replacing
+  // merge(fn, { matchOn: 'id' | at: 'data' | prepend: true }), deepMerge(fn) for nested objects.
+  // Helpers work at any depth; partial reloads accept dot paths (only: ['auth.permissions']).
 };
 ```
 

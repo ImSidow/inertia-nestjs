@@ -1,4 +1,4 @@
-import { always, defer, lazy, merge } from 'src/common/inertia.props';
+import { always, deepMerge, defer, lazy, merge } from 'src/common/inertia.props';
 import { InertiaService } from 'src/services/inertia.service';
 
 describe('InertiaService', () => {
@@ -533,5 +533,94 @@ describe('InertiaService', () => {
         expect(res.send).toHaveBeenCalledWith(
             expect.stringContaining('<title>SSR</title>'),
         );
+    });
+
+    describe('v3 protocol: nested paths, merge strategies, shared keys', () => {
+        const service = () => new InertiaService({ rootView: 'app', version: '1' });
+        const full = { headers: {}, url: '/p', originalUrl: '/p', method: 'GET' };
+        const partial = (headers: Record<string, string>) => ({
+            ...full,
+            headers: { 'x-inertia': 'true', 'x-inertia-partial-component': 'Page', ...headers },
+        });
+
+        it('partial reload with a dot path returns only that nested prop', async () => {
+            const page = await service().buildPage(partial({ 'x-inertia-partial-data': 'auth.user' }), 'Page', {
+                props: { auth: { user: 'alice', permissions: ['a'] }, other: 'x' },
+            });
+            expect(page.props).toEqual({ auth: { user: 'alice' } });
+        });
+
+        it('partial reload with a dot path in except drops only that nested prop', async () => {
+            const page = await service().buildPage(partial({ 'x-inertia-partial-except': 'auth.permissions' }), 'Page', {
+                props: { auth: { user: 'alice', permissions: ['a'] }, other: 'x' },
+            });
+            expect(page.props).toEqual({ errors: {}, auth: { user: 'alice' }, other: 'x' });
+        });
+
+        it('nested deferred props are listed by dot path on full load and resolved on partial reload', async () => {
+            const props = { stats: { total: 1, visits: defer(async () => 42, 'metrics') } };
+
+            const first = await service().buildPage(full, 'Page', { props });
+            expect(first.props).toEqual({ errors: {}, stats: { total: 1 } });
+            expect(first.deferredProps).toEqual({ metrics: ['stats.visits'] });
+
+            const reload = await service().buildPage(partial({ 'x-inertia-partial-data': 'stats.visits' }), 'Page', { props });
+            expect(reload.props).toEqual({ stats: { visits: 42 } });
+            expect(reload).not.toHaveProperty('deferredProps');
+        });
+
+        it('emits append, prepend, deep and matchOn metadata, including nested paths', async () => {
+            const page = await service().buildPage(full, 'Page', {
+                props: {
+                    posts: merge(() => [{ id: 1 }], { matchOn: 'id' }),
+                    feed: merge(() => ({ data: [] }), { at: 'data', prepend: true }),
+                    settings: deepMerge(() => ({ a: { b: 1 } })),
+                    nested: { comments: merge(() => []) },
+                },
+            });
+            expect(page.mergeProps).toEqual(['posts', 'nested.comments']);
+            expect(page.prependProps).toEqual(['feed.data']);
+            expect(page.deepMergeProps).toEqual(['settings']);
+            expect(page.matchPropsOn).toEqual(['posts.id']);
+        });
+
+        it('omits merge metadata for props named in X-Inertia-Reset', async () => {
+            const page = await service().buildPage(
+                partial({ 'x-inertia-partial-data': 'posts', 'x-inertia-reset': 'posts' }),
+                'Page',
+                { props: { posts: merge(() => [{ id: 2 }]) } },
+            );
+            expect(page.props).toEqual({ posts: [{ id: 2 }] });
+            expect(page).not.toHaveProperty('mergeProps');
+        });
+
+        it('lists shared prop keys from static, factory and per-request sharing', async () => {
+            const svc = new InertiaService({ version: '1', sharedProps: () => ({ user: 'alice' }) });
+            svc.share('appName', 'App');
+            const req = { ...full } as Record<string, unknown>;
+            svc.share('auth', { id: 1 }, req as never);
+
+            const page = await svc.buildPage(req as never, 'Page', { props: { local: 1 } });
+            expect(page.sharedProps).toEqual(['errors', 'user', 'appName', 'auth']);
+            expect(page.props).toEqual({ errors: {}, user: 'alice', appName: 'App', auth: { id: 1 }, local: 1 });
+        });
+
+        it('applies partial-reload filtering to props from the shared factory', async () => {
+            const svc = new InertiaService({ version: '1', sharedProps: () => ({ user: 'alice' }) });
+            const page = await svc.buildPage(partial({ 'x-inertia-partial-data': 'local' }), 'Page', {
+                props: { local: 1 },
+            });
+            expect(page.props).toEqual({ local: 1 });
+        });
+
+        it('appends X-Inertia to an existing Vary header instead of overwriting it', async () => {
+            const { res, headers } = createResponseMock();
+            headers.set('vary', 'Accept-Encoding');
+            await service().respond(partial({}), res, { component: 'Page', props: {}, url: '/p', version: '1' });
+            expect(headers.get('vary')).toBe('Accept-Encoding, X-Inertia');
+
+            await service().respond(partial({}), res, { component: 'Page', props: {}, url: '/p', version: '1' });
+            expect(headers.get('vary')).toBe('Accept-Encoding, X-Inertia');
+        });
     });
 });

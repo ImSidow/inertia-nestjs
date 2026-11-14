@@ -105,11 +105,10 @@ Inertia requires a root HTML template that embeds the serialized page object.
     </head>
 
     <body>
-        <script type="application/json" data-page="app">{{{json page}}}</script>
-
         {{#if ssrBody}}
-        <div id="app">{{{ssrBody}}}</div>
+        {{{ssrBody}}}
         {{else}}
+        <script type="application/json" data-page="app">{{{json page}}}</script>
         <div id="app"></div>
         {{/if}}
     </body>
@@ -118,6 +117,8 @@ Inertia requires a root HTML template that embeds the serialized page object.
 
 > The client reads the page object from a `<script type="application/json" data-page="app">` tag, **not** a `data-page` attribute on the `#app` div — that older pattern doesn't get picked up by `@inertiajs/core` and the page never hydrates.
 
+> With SSR, output `ssrBody` **as-is** — the v3 SSR server already includes the page `<script>` and the `<div id="app" data-server-rendered>` root. Wrapping it in another `#app` div (or adding a second page script) makes the client mount on the wrong element and re-render from scratch instead of hydrating. Templates scaffolded before 1.6.0 have this bug; update `views/app.hbs` to match the one above.
+
 ### EJS (`views/app.ejs`)
 
 ```html
@@ -125,7 +126,7 @@ Inertia requires a root HTML template that embeds the serialized page object.
 <div id="app"></div>
 ```
 
-> **Always escape `<` in the page JSON.** A plain `JSON.stringify(page)` lets any prop containing `</script>` (e.g. a user's display name) break out of the tag and run script — an XSS hole. Replacing `<` with `<` keeps the JSON valid and the tag closed.
+> **Always escape `<` in the page JSON.** A plain `JSON.stringify(page)` lets any prop containing `</script>` (e.g. a user's display name) break out of the tag and run script — an XSS hole. Replacing `<` with `\u003c` keeps the JSON valid and the tag closed.
 
 ---
 
@@ -388,6 +389,44 @@ async index() {
 }
 ```
 
+Options:
+
+```ts
+import { merge, deepMerge } from 'inertia-nestjs';
+
+merge(() => posts, { matchOn: 'id' });              // replace items with the same id instead of duplicating
+merge(() => paginator, { at: 'data' });             // merge only paginator.data, replace the rest
+merge(() => messages, { prepend: true });           // prepend instead of append
+deepMerge(() => settings);                          // recursively merge nested objects
+```
+
+`matchOn` paths are relative to the prop, not to `at` — with `at: 'data'`, match on `'data.id'`.
+
+A client reload with `reset: ['posts']` (sent as `X-Inertia-Reset`) replaces the prop instead of merging it.
+
+---
+
+# Nested Props & Partial Reloads
+
+Prop helpers work at any depth, and partial reloads accept dot paths:
+
+```ts
+return {
+  auth: {
+    user: req.user,
+    permissions: lazy(() => this.getPermissions()),
+  },
+  stats: { visits: defer(() => this.countVisits()) },  // deferredProps: { default: ['stats.visits'] }
+};
+```
+
+```ts
+router.reload({ only: ['auth.permissions'] }); // returns { auth: { permissions: [...] } }
+router.reload({ except: ['auth.permissions'] });
+```
+
+Shared props (from `forRoot`, `share()` or your middleware) are listed by key in the page's `sharedProps`, which the v3 client uses to carry them over during instant visits. They are filtered by partial reloads like any other prop.
+
 ---
 
 # Asset Versioning
@@ -578,8 +617,9 @@ InertiaModule.forRootAsync({
 | ------------------- | ------------------------------------- |
 | `lazy(fn)`          | Only evaluated during partial reloads |
 | `always(fn)`        | Always evaluated                      |
-| `defer(fn, group?, rescue?)` | Loaded asynchronously; `rescue: true` resolves to `null` instead of failing the request if `fn` throws |
-| `merge(fn)`         | Merge new data with existing          |
+| `defer(fn, group?, rescue?)` | Loaded asynchronously; with `rescue: true` a throwing `fn` is omitted and listed in `rescuedProps` instead of failing the request |
+| `merge(fn, { prepend?, at?, matchOn? })` | Append (or prepend) new data to existing client data |
+| `deepMerge(fn, { matchOn? })` | Deep-merge nested objects with existing client data |
 
 ---
 

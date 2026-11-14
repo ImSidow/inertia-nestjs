@@ -16,6 +16,12 @@ export type DeferProp<T = unknown> = {
 export type MergeProp<T = unknown> = {
     _type: 'merge';
     fn: () => T | Promise<T>;
+    /** Defaults to 'append'. */
+    mode?: 'append' | 'prepend' | 'deep';
+    /** Merge at a nested path (e.g. 'data' for a paginator) instead of the prop root. */
+    at?: string;
+    /** Item key fields to match on when merging, relative to the prop (e.g. 'id', 'data.id'). */
+    matchOn?: string[];
 };
 
 export type PropValue = unknown | LazyProp | AlwaysProp | DeferProp | MergeProp;
@@ -32,6 +38,12 @@ export interface InertiaPage {
     clearHistory?: boolean;
     deferredProps?: Record<string, string[]>;
     mergeProps?: string[];
+    prependProps?: string[];
+    deepMergeProps?: string[];
+    /** Entries of the form `<propPath>.<keyField>`. */
+    matchPropsOn?: string[];
+    /** Top-level shared prop keys, carried over by the client on instant visits. */
+    sharedProps?: string[];
     /** Deferred props that threw and were rescued (partial reloads only). */
     rescuedProps?: string[];
     /** One-off flash data; the v3 client exposes it via the `inertia:flash` event. */

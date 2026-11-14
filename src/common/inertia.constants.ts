@@ -10,6 +10,8 @@ export const INERTIA_PARTIAL_DATA_HEADER = 'x-inertia-partial-data';
 export const INERTIA_PARTIAL_EXCEPT_HEADER = 'x-inertia-partial-except';
 export const INERTIA_ENCRYPT_HISTORY_HEADER = 'x-inertia-encrypt-history';
 export const INERTIA_CLEAR_HISTORY_HEADER = 'x-inertia-clear-history';
+/** Comma-separated prop paths the client resets instead of merging. */
+export const INERTIA_RESET_HEADER = 'x-inertia-reset';
 
 /** Metadata key used to attach Inertia render options to route handlers. */
 export const INERTIA_RENDER_KEY = 'inertia:render';
