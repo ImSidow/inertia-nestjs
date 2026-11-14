@@ -14,6 +14,7 @@ export interface InertiaHttpAdapter {
     getRequestUrl(req: HttpRequestLike): string;
 
     setHeader(res: HttpResponseLike, name: string, value: string): void;
+    appendVary(res: HttpResponseLike, value: string): void;
     getHeaderFromResponse(
         res: HttpResponseLike,
         name: string,

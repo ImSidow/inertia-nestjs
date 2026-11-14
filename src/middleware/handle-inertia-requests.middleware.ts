@@ -64,6 +64,10 @@ export class HandleInertiaRequests implements NestMiddleware {
             INERTIA_HEADER,
         );
 
+        // Set up front so every response (HTML, JSON, 409, redirects) carries it,
+        // like inertia-laravel's middleware.
+        inertiaHttpAdapter.appendVary(res, 'X-Inertia');
+
         if (isInertiaRequest) {
             // Asset version check — trigger full reload on mismatch
             const clientVersion = inertiaHttpAdapter.getHeader(

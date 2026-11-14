@@ -29,6 +29,8 @@
 npm install inertia-nestjs
 ```
 
+Supports NestJS 10, 11 and 12. NestJS 12 is published as ES modules; this package loads it through Node's `require()` of ES modules, which needs **Node 20.19+ or 22.12+**.
+
 You will also need an Inertia client adapter depending on your frontend:
 
 ```bash

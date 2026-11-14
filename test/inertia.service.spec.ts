@@ -168,6 +168,7 @@ describe('InertiaService', () => {
         );
 
         expect(page.props).toEqual({
+            errors: {},
             permissions: ['create', 'update'],
         });
     });
@@ -199,6 +200,7 @@ describe('InertiaService', () => {
         );
 
         expect(page.props).toEqual({
+            errors: {},
             auth: { user: 'alice' },
             permissions: ['create', 'update'],
         });
@@ -389,6 +391,7 @@ describe('InertiaService', () => {
         );
 
         expect(page.props).toEqual({
+            errors: {},
             profile: { name: 'Alice', avatar: 'avatar.png' },
         });
     });
@@ -420,7 +423,7 @@ describe('InertiaService', () => {
             },
         );
 
-        expect(page.props).toEqual({});
+        expect(page.props).toEqual({ errors: {} });
         expect(page.rescuedProps).toEqual(['chartData']);
     });
 
@@ -547,7 +550,7 @@ describe('InertiaService', () => {
             const page = await service().buildPage(partial({ 'x-inertia-partial-data': 'auth.user' }), 'Page', {
                 props: { auth: { user: 'alice', permissions: ['a'] }, other: 'x' },
             });
-            expect(page.props).toEqual({ auth: { user: 'alice' } });
+            expect(page.props).toEqual({ errors: {}, auth: { user: 'alice' } });
         });
 
         it('partial reload with a dot path in except drops only that nested prop', async () => {
@@ -565,7 +568,7 @@ describe('InertiaService', () => {
             expect(first.deferredProps).toEqual({ metrics: ['stats.visits'] });
 
             const reload = await service().buildPage(partial({ 'x-inertia-partial-data': 'stats.visits' }), 'Page', { props });
-            expect(reload.props).toEqual({ stats: { visits: 42 } });
+            expect(reload.props).toEqual({ errors: {}, stats: { visits: 42 } });
             expect(reload).not.toHaveProperty('deferredProps');
         });
 
@@ -590,7 +593,7 @@ describe('InertiaService', () => {
                 'Page',
                 { props: { posts: merge(() => [{ id: 2 }]) } },
             );
-            expect(page.props).toEqual({ posts: [{ id: 2 }] });
+            expect(page.props).toEqual({ errors: {}, posts: [{ id: 2 }] });
             expect(page).not.toHaveProperty('mergeProps');
         });
 
@@ -610,7 +613,37 @@ describe('InertiaService', () => {
             const page = await svc.buildPage(partial({ 'x-inertia-partial-data': 'local' }), 'Page', {
                 props: { local: 1 },
             });
-            expect(page.props).toEqual({ local: 1 });
+            expect(page.props).toEqual({ errors: {}, local: 1 });
+        });
+
+        it('returns flashed errors on a partial reload that did not request them', async () => {
+            const req = { ...partial({ 'x-inertia-partial-data': 'tab' }), __inertiaFlash: { errors: { name: 'is required' } } };
+            const page = await service().buildPage(req as never, 'Page', { props: { tab: 'a', other: 'x' } });
+            expect(page.props).toEqual({ errors: { name: 'is required' }, tab: 'a' });
+        });
+
+        it('returns empty errors on a partial reload so the client can clear stale ones', async () => {
+            const page = await service().buildPage(partial({ 'x-inertia-partial-data': 'tab' }), 'Page', { props: { tab: 'a' } });
+            expect(page.props).toEqual({ errors: {}, tab: 'a' });
+        });
+
+        it('keeps errors even when X-Inertia-Partial-Except names them, like inertia-laravel always props', async () => {
+            const page = await service().buildPage(partial({ 'x-inertia-partial-except': 'errors' }), 'Page', { props: { tab: 'a' } });
+            expect(page.props).toEqual({ errors: {}, tab: 'a' });
+        });
+
+        it('treats errors passed as a route prop (validation re-render) as always included', async () => {
+            const page = await service().buildPage(partial({ 'x-inertia-partial-data': 'tab' }), 'Page', {
+                props: { tab: 'a', errors: { email: 'taken' } },
+            });
+            expect(page.props).toEqual({ errors: { email: 'taken' }, tab: 'a' });
+        });
+
+        it('sets Vary: X-Inertia on HTML responses too, appending to existing values', async () => {
+            const { res, headers } = createResponseMock();
+            headers.set('vary', 'Accept-Encoding');
+            await service().respond(full, res, { component: 'Page', props: {}, url: '/p', version: '1' });
+            expect(headers.get('vary')).toBe('Accept-Encoding, X-Inertia');
         });
 
         it('appends X-Inertia to an existing Vary header instead of overwriting it', async () => {
