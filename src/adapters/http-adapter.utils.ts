@@ -52,6 +52,18 @@ export const inertiaHttpAdapter: InertiaHttpAdapter = {
         );
     },
 
+    /** Add `value` to the response's Vary header, keeping existing values. */
+    appendVary(res: HttpResponseLike, value: string): void {
+        const vary = this.getHeaderFromResponse(res, 'Vary');
+        if (!vary) {
+            this.setHeader(res, 'Vary', value);
+            return;
+        }
+        const values = vary.split(',').map((v) => v.trim().toLowerCase());
+        if (values.includes(value.toLowerCase()) || values.includes('*')) return;
+        this.setHeader(res, 'Vary', `${vary}, ${value}`);
+    },
+
     getHeaderFromResponse(
         res: HttpResponseLike,
         name: string,

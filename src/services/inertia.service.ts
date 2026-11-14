@@ -20,7 +20,7 @@ import {
     INERTIA_PARTIAL_EXCEPT_HEADER,
     INERTIA_RESET_HEADER,
 } from '../common/inertia.constants';
-import { isAlways, isDefer, isLazy, isMerge } from '../common/inertia.props';
+import { always, isAlways, isDefer, isLazy, isMerge } from '../common/inertia.props';
 import { SSR_GATEWAY, SsrGateway } from '../ssr/ssr-gateway.interface';
 
 /** True for object literals (`{}`), false for arrays, null, Date, and other class instances. */
@@ -144,7 +144,7 @@ export class InertiaService {
                 ? ((await (factory as () => unknown)()) as Record<string, PropValue>) ?? {}
                 : {};
         const shared = { ...factoryShared, ...staticShared, ...requestShared };
-        const combinedProps = {
+        const combinedProps: Record<string, PropValue> = {
             errors: {},
             ...shared,
             ...(flash.errors ? { errors: flash.errors } : {}),
@@ -153,6 +153,12 @@ export class InertiaService {
             ...(flash.flash ? { flash: flash.flash } : {}),
             ...props,
         };
+        // Errors come back on every response, partial reloads included, so the
+        // client can clear stale ones (inertia-laravel shares them as Inertia::always()).
+        const { errors } = combinedProps;
+        if (!isAlways(errors) && !isDefer(errors) && !isMerge(errors) && !isLazy(errors)) {
+            combinedProps.errors = always(() => errors);
+        }
 
         const ctx: ResolveContext = {
             isPartial,
@@ -209,20 +215,15 @@ export class InertiaService {
             INERTIA_HEADER,
         );
 
+        // HTML and JSON share a URL, so caches must key on X-Inertia for both.
+        inertiaHttpAdapter.appendVary(res, 'X-Inertia');
+
         if (isInertiaRequest) {
             inertiaHttpAdapter.setStatus(res, options.status ?? 200);
             inertiaHttpAdapter.setHeader(
                 res,
                 'Content-Type',
                 'application/json',
-            );
-            // Append rather than overwrite, so other middleware's Vary values survive.
-            const vary = inertiaHttpAdapter.getHeaderFromResponse(res, 'Vary');
-            const varies = vary?.split(',').map((v) => v.trim().toLowerCase()) ?? [];
-            inertiaHttpAdapter.setHeader(
-                res,
-                'Vary',
-                !vary ? 'X-Inertia' : varies.includes('x-inertia') || varies.includes('*') ? vary : `${vary}, X-Inertia`,
             );
             inertiaHttpAdapter.setHeader(res, INERTIA_HEADER, 'true');
             inertiaHttpAdapter.json(res, page);

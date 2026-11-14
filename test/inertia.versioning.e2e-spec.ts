@@ -61,5 +61,12 @@ describe('Inertia versioning (e2e)', () => {
 
         expect(res.headers['x-inertia-location']).toBe('/users');
         expect(res.headers['x-inertia-version']).toBe('2.0.0');
+        expect(res.headers['vary']).toBe('X-Inertia');
+    });
+
+    it('sets Vary: X-Inertia on a plain (non-Inertia) response through the middleware', async () => {
+        const res = await request(app.getHttpServer()).get('/users');
+
+        expect(res.headers['vary']).toContain('X-Inertia');
     });
 });
