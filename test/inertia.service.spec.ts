@@ -6,23 +6,23 @@ describe('InertiaService', () => {
         const headers = new Map<string, string>();
 
         const res = {
-            status: jest.fn().mockReturnThis(),
-            code: jest.fn().mockReturnThis(),
-            setHeader: jest
+            status: vi.fn().mockReturnThis(),
+            code: vi.fn().mockReturnThis(),
+            setHeader: vi
                 .fn()
                 .mockImplementation((name: string, value: string) => {
                     headers.set(name.toLowerCase(), value);
                     return res;
                 }),
-            getHeader: jest.fn().mockImplementation((name: string) => {
+            getHeader: vi.fn().mockImplementation((name: string) => {
                 return headers.get(name.toLowerCase());
             }),
-            json: jest.fn().mockReturnThis(),
-            send: jest.fn().mockReturnThis(),
-            end: jest.fn().mockReturnThis(),
-            redirect: jest.fn().mockReturnThis(),
+            json: vi.fn().mockReturnThis(),
+            send: vi.fn().mockReturnThis(),
+            end: vi.fn().mockReturnThis(),
+            redirect: vi.fn().mockReturnThis(),
             app: {
-                render: jest
+                render: vi
                     .fn()
                     .mockImplementation(
                         (
@@ -497,7 +497,7 @@ describe('InertiaService', () => {
 
     it('respond() renders root view on first load and injects SSR output when available', async () => {
         const gateway = {
-            dispatch: jest.fn().mockResolvedValue({
+            dispatch: vi.fn().mockResolvedValue({
                 head: ['<title>SSR</title>'],
                 body: '<h1>SSR CONTENT</h1>',
             }),

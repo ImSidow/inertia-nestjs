@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest';
 import { existsSync } from 'fs';
 import { BundleDetector } from 'src/ssr/bundle-detector';
 import { HttpGateway } from 'src/ssr/http-gateway';
@@ -6,11 +7,11 @@ import { InertiaService } from 'src/services/inertia.service';
 import { SsrGateway } from 'src/ssr/ssr-gateway.interface';
 import { SsrResponse } from 'src/ssr/ssr-response';
 
-jest.mock('fs', () => ({
-    existsSync: jest.fn(),
+vi.mock('fs', () => ({
+    existsSync: vi.fn(),
 }));
 
-const mockedExistsSync = existsSync as jest.MockedFunction<typeof existsSync>;
+const mockedExistsSync = existsSync as Mock<typeof existsSync>;
 
 const fakePage: InertiaPage = {
     component: 'Home/Index',
@@ -21,7 +22,7 @@ const fakePage: InertiaPage = {
 
 describe('BundleDetector', () => {
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     it('returns false when custom bundle path does not exist', () => {
@@ -62,9 +63,9 @@ describe('BundleDetector', () => {
 
 describe('HttpGateway', () => {
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
         mockedExistsSync.mockReturnValue(true);
-        (global as typeof global & { fetch?: jest.Mock }).fetch = jest.fn();
+        (global as typeof global & { fetch?: Mock }).fetch = vi.fn();
     });
 
     it('returns null when enabled is false', async () => {
@@ -85,9 +86,9 @@ describe('HttpGateway', () => {
     });
 
     it('returns null when fetch throws', async () => {
-        global.fetch = jest
+        global.fetch = vi
             .fn()
-            .mockRejectedValue(new Error('ECONNREFUSED')) as jest.Mock;
+            .mockRejectedValue(new Error('ECONNREFUSED')) as Mock;
 
         const gateway = new HttpGateway({
             enabled: true,
@@ -98,10 +99,10 @@ describe('HttpGateway', () => {
     });
 
     it('returns null when SSR server responds with non-ok status', async () => {
-        global.fetch = jest.fn().mockResolvedValue({
+        global.fetch = vi.fn().mockResolvedValue({
             ok: false,
             status: 500,
-        }) as jest.Mock;
+        }) as Mock;
 
         const gateway = new HttpGateway({
             enabled: true,
@@ -112,10 +113,10 @@ describe('HttpGateway', () => {
     });
 
     it('returns null when SSR response body is invalid', async () => {
-        global.fetch = jest.fn().mockResolvedValue({
+        global.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ head: [] }),
-        }) as jest.Mock;
+        }) as Mock;
 
         const gateway = new HttpGateway({
             enabled: true,
@@ -134,10 +135,10 @@ describe('HttpGateway', () => {
             body: '<div id="app"><h1>Hello SSR</h1></div>',
         };
 
-        global.fetch = jest.fn().mockResolvedValue({
+        global.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ssrPayload,
-        }) as jest.Mock;
+        }) as Mock;
 
         const gateway = new HttpGateway({
             enabled: true,
@@ -168,10 +169,10 @@ describe('HttpGateway', () => {
     });
 
     it('does not exclude a path that only shares a prefix without an explicit wildcard', async () => {
-        global.fetch = jest.fn().mockResolvedValue({
+        global.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ head: [], body: '<div />' }),
-        }) as jest.Mock;
+        }) as Mock;
 
         const gateway = new HttpGateway({
             enabled: true,
@@ -189,10 +190,10 @@ describe('HttpGateway', () => {
     });
 
     it('still dispatches for a page url that does not match any exclude pattern', async () => {
-        global.fetch = jest.fn().mockResolvedValue({
+        global.fetch = vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({ head: [], body: '<div />' }),
-        }) as jest.Mock;
+        }) as Mock;
 
         const gateway = new HttpGateway({
             enabled: true,
@@ -209,7 +210,7 @@ describe('HttpGateway', () => {
     it('normalizes the /render URL correctly', async () => {
         let capturedUrl: string | undefined;
 
-        global.fetch = jest.fn().mockImplementation((url: string) => {
+        global.fetch = vi.fn().mockImplementation((url: string) => {
             capturedUrl = url;
 
             return Promise.resolve({
@@ -219,7 +220,7 @@ describe('HttpGateway', () => {
                     body: '<div />',
                 }),
             });
-        }) as jest.Mock;
+        }) as Mock;
 
         const gateway = new HttpGateway({
             enabled: true,
@@ -245,12 +246,12 @@ function makeReq(overrides: Record<string, unknown> = {}) {
 function makeRes() {
     const headers = new Map<string, string>();
 
-    const json = jest.fn();
-    const send = jest.fn();
-    const end = jest.fn();
-    const redirect = jest.fn();
+    const json = vi.fn();
+    const send = vi.fn();
+    const end = vi.fn();
+    const redirect = vi.fn();
 
-    const appRender = jest
+    const appRender = vi
         .fn()
         .mockImplementation(
             (
@@ -276,15 +277,15 @@ function makeRes() {
         headersSent: boolean;
         statusCode?: number;
         app: {
-            render: jest.Mock;
+            render: Mock;
         };
-        json: jest.Mock;
-        send: jest.Mock;
-        end: jest.Mock;
-        redirect: jest.Mock;
-        status: jest.Mock;
-        setHeader: jest.Mock;
-        getHeader: jest.Mock;
+        json: Mock;
+        send: Mock;
+        end: Mock;
+        redirect: Mock;
+        status: Mock;
+        setHeader: Mock;
+        getHeader: Mock;
     } = {
         headersSent: false,
         app: {
@@ -294,9 +295,9 @@ function makeRes() {
         send,
         end,
         redirect,
-        status: jest.fn(),
-        setHeader: jest.fn(),
-        getHeader: jest.fn(),
+        status: vi.fn(),
+        setHeader: vi.fn(),
+        getHeader: vi.fn(),
     };
 
     res.status.mockImplementation((code: number) => {
@@ -329,7 +330,7 @@ function makeRes() {
 describe('InertiaService with SSR gateway', () => {
     it('passes ssrHead and ssrBody to app.render when gateway returns a response', async () => {
         const mockGateway: SsrGateway = {
-            dispatch: jest.fn().mockResolvedValue({
+            dispatch: vi.fn().mockResolvedValue({
                 head: ['<title>SSR Title</title>'],
                 body: '<div id="app"><h1>SSR</h1></div>',
             }),
@@ -363,7 +364,7 @@ describe('InertiaService with SSR gateway', () => {
 
     it('skips the SSR gateway entirely when render options set ssr: false', async () => {
         const mockGateway: SsrGateway = {
-            dispatch: jest.fn().mockResolvedValue({
+            dispatch: vi.fn().mockResolvedValue({
                 head: ['<title>SSR Title</title>'],
                 body: '<div id="app"><h1>SSR</h1></div>',
             }),
@@ -385,7 +386,7 @@ describe('InertiaService with SSR gateway', () => {
 
     it('passes ssrHead=[] and ssrBody=null to app.render when gateway returns null', async () => {
         const mockGateway: SsrGateway = {
-            dispatch: jest.fn().mockResolvedValue(null),
+            dispatch: vi.fn().mockResolvedValue(null),
         };
 
         const service = new InertiaService({ rootView: 'app' }, mockGateway);
@@ -413,7 +414,7 @@ describe('InertiaService with SSR gateway', () => {
 
     it('skips SSR for Inertia requests', async () => {
         const mockGateway: SsrGateway = {
-            dispatch: jest.fn(),
+            dispatch: vi.fn(),
         };
 
         const service = new InertiaService({ rootView: 'app' }, mockGateway);

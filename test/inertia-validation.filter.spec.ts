@@ -1,5 +1,8 @@
+import type { Mock } from 'vitest';
 import { InertiaValidationFilter } from 'src/filters/inertia-validation.filter';
 import { InertiaService } from 'src/services/inertia.service';
+import { Logger } from '@nestjs/common';
+import { InertiaResponseHandledException } from 'src/common/inertia-response-handled.exception';
 
 function makeException(status: number, response: unknown) {
     return { getStatus: () => status, getResponse: () => response };
@@ -8,12 +11,12 @@ function makeException(status: number, response: unknown) {
 function makeRes(headersSent = false) {
     return {
         headersSent,
-        setHeader: jest.fn(),
-        getHeader: jest.fn(),
-        json: jest.fn(),
-        send: jest.fn(),
-        status: jest.fn().mockReturnThis(),
-        code: jest.fn().mockReturnThis(),
+        setHeader: vi.fn(),
+        getHeader: vi.fn(),
+        json: vi.fn(),
+        send: vi.fn(),
+        status: vi.fn().mockReturnThis(),
+        code: vi.fn().mockReturnThis(),
     };
 }
 
@@ -28,14 +31,32 @@ function makeHost(req: Record<string, unknown>, res: ReturnType<typeof makeRes>)
 
 describe('InertiaValidationFilter', () => {
     let filter: InertiaValidationFilter;
-    let inertia: { redirectBack: jest.Mock; render: jest.Mock };
+    let inertia: { redirectBack: Mock; render: Mock; renderException: Mock };
 
     beforeEach(() => {
         inertia = {
-            redirectBack: jest.fn(),
-            render: jest.fn().mockResolvedValue(undefined),
+            redirectBack: vi.fn(),
+            render: vi.fn().mockResolvedValue(undefined),
+            renderException: vi.fn().mockResolvedValue(false),
         };
         filter = new InertiaValidationFilter(inertia as unknown as InertiaService);
+    });
+
+    it('ends an "already rendered" signal quietly, e.g. for a request the client cancelled', async () => {
+        const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+        const res = { ...makeRes(false), end: vi.fn() };
+        await filter.catch(new InertiaResponseHandledException(), makeHost({ headers: {} }, res as never));
+        expect(error).not.toHaveBeenCalled();
+        expect(res.end).toHaveBeenCalled();
+        expect(res.json).not.toHaveBeenCalled();
+        error.mockRestore();
+    });
+
+    it('treats a Fastify reply as sent when its raw response is', async () => {
+        const res = { ...makeRes(false), raw: { headersSent: true } };
+        await filter.catch(makeException(400, { errors: { a: 'b' } }), makeHost({ headers: {} }, res as never));
+        expect(res.json).not.toHaveBeenCalled();
+        expect(inertia.redirectBack).not.toHaveBeenCalled();
     });
 
     it('returns early when headers already sent', async () => {

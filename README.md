@@ -1,6 +1,6 @@
 # inertia-nestjs
 
-> A platform-agnostic Inertia.js adapter for NestJS (Express, Fastify, and any Nest HTTP adapter) — inspired by inertia-laravel.
+> A platform-agnostic Inertia.js adapter for NestJS (Express and Fastify) — inspired by inertia-laravel.
 
 [![npm version](https://img.shields.io/npm/v/inertia-nestjs.svg?style=flat-square)](https://www.npmjs.com/package/inertia-nestjs)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -9,7 +9,7 @@
 
 ## Features
 
-- 🚀 **Platform agnostic** — works with Express, Fastify, or any NestJS HTTP adapter
+- 🚀 **Platform agnostic** — works with Express and Fastify (both tested in CI on NestJS 10, 11 and 12)
 - ⚡ **Inertia.js protocol compliant**
 - 🧩 **Decorator-based API** (`@Inertia()`)
 - 🪶 **Lazy, deferred, merge, and always props**
@@ -160,6 +160,37 @@ bootstrap();
 
 Requires `npm install hbs @types/hbs`. Skipping `useStaticAssets` is a common mistake — without it, the built client bundle 404s and the page stays blank even though the server-rendered HTML looks correct.
 
+### Fastify
+
+On Fastify, views render through [`@fastify/view`](https://github.com/fastify/point-of-view) and static files through `@fastify/static`:
+
+```ts
+// main.ts
+import { NestFactory } from '@nestjs/core';
+import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import { join } from 'node:path';
+import Handlebars from 'handlebars';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+    const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
+
+    app.useStaticAssets({ root: join(process.cwd(), 'public') });
+    // Escaping `<` prevents a `</script>` inside any prop from breaking out of the tag (XSS).
+    Handlebars.registerHelper('json', (value) => JSON.stringify(value).replace(/</g, '\\u003c'));
+    app.setViewEngine({
+        engine: { handlebars: Handlebars },
+        templates: join(process.cwd(), 'views'),
+        viewExt: 'hbs',
+    });
+
+    await app.listen(3000);
+}
+bootstrap();
+```
+
+Requires `npm install @fastify/view @fastify/static handlebars`. On NestJS 10 (Fastify 4) use `@fastify/view@9`. The same `views/app.hbs` template works on both platforms.
+
 ---
 
 # Controller Usage
@@ -201,15 +232,29 @@ export class UsersController {
 
 Catches `class-validator` errors, flashes them, and redirects back — the client reads them from `usePage().props.errors` (or `useForm`'s `errors`) after the redirect.
 
+Register `InertiaValidationPipe` (a `ValidationPipe` with field-keyed errors) so each error lands next to its input. Nest's default `ValidationPipe` keeps only the messages, not which field they belong to.
+
+```ts
+// main.ts
+import { InertiaValidationPipe } from 'inertia-nestjs';
+
+app.useGlobalPipes(new InertiaValidationPipe({ whitelist: true })); // takes the usual ValidationPipe options
+```
+
+Errors arrive as `{ email: 'Enter a valid email address.' }`; nested DTOs use dot paths (`'address.city'`). Already have your own pipe setup? Pass `exceptionFactory: inertiaExceptionFactory` to it instead.
+
 ```ts
 import { InertiaValidate } from 'inertia-nestjs';
 
 @Post('users')
 @InertiaValidate() // or @InertiaValidate('Users/Create') to redirect to a specific component instead of back
+@Redirect('/users', 302) // optional: where to go on success
 async create(@Body() dto: CreateUserDto) {
     await this.users.create(dto);
 }
 ```
+
+On success, a handler that uses `@Redirect()` (including a returned `{ url }`), renders an `@Inertia()` page, or sends its own response keeps control. Otherwise it redirects back to the previous page with `303`.
 
 ## `@InertiaHandleException()`
 
@@ -227,7 +272,40 @@ async update(@Param('id') id: string) {
 
 Omit `codes` to catch all HTTP exceptions thrown in that handler.
 
-This also catches exceptions thrown by `@UseGuards()` — e.g. an auth guard rejecting the request — not just ones thrown in the handler body itself.
+This also catches exceptions thrown by `@UseGuards()` — e.g. an auth guard rejecting the request — not just ones thrown in the handler body itself. Both decorators also work on a whole controller; a decorator on the method wins:
+
+```ts
+@Controller('settings')
+@UseGuards(AuthGuard)
+@InertiaHandleException({ codes: [401], returnPath: '/login' }) // every route: signed-out users go to /login
+export class SettingsController {}
+```
+
+Plain browser requests (a bookmark, a new tab, a form without JavaScript) are redirected the same way as Inertia visits, with the errors flashed. Clients that ask for JSON only (`Accept: application/json`) still get the JSON error.
+
+"Redirect back" only ever goes to a page on your own site: a `Referer` from another site (or a protocol-relative `//host` one) is ignored and the redirect goes to `/`.
+
+## Error pages
+
+Without this, errors nobody handled (an unknown route, a crash) reach the client as JSON, which it shows raw in its error dialog. `handleExceptionsUsing` renders a page of yours instead, with the error's status code:
+
+```ts
+InertiaModule.forRoot({
+    handleExceptionsUsing: (error) => {
+        if ([403, 404, 500, 503].includes(error.statusCode)) {
+            return error.render('error', { status: error.statusCode });
+        }
+        // return nothing to keep the default response (e.g. for 418)
+    },
+});
+```
+
+- Works for Inertia visits and first visits (HTML, with SSR), on Express and Fastify. Shared props (auth user, app name) are included.
+- `error.exception`, `error.request` and `error.statusCode` let you decide per error. Never pass `error.exception`'s message to the page — it may contain internals.
+- Clients that ask for JSON only (`Accept: application/json`) keep the JSON error. Validation and `@InertiaHandleException` redirects are not affected.
+- If the callback itself throws, the error is logged and the default response is sent.
+
+Equivalent to inertia-laravel's `Inertia::handleExceptionsUsing()`.
 
 ---
 
@@ -373,6 +451,17 @@ async show() {
 }
 ```
 
+Pass an options object for more control:
+
+```ts
+defer(() => this.comments.latest(), {
+  group: 'comments',          // props in one group load in one request
+  rescue: true,               // if it throws: omitted and listed in rescuedProps, not a failed request
+  merge: { matchOn: 'id' },   // merge into existing client data (e.g. "load more"); takes merge() options
+  // deepMerge: true,          // or deep-merge nested objects
+});
+```
+
 ---
 
 # Merge Props
@@ -405,6 +494,65 @@ deepMerge(() => settings);                          // recursively merge nested 
 `matchOn` paths are relative to the prop, not to `at` — with `at: 'data'`, match on `'data.id'`.
 
 A client reload with `reset: ['posts']` (sent as `X-Inertia-Reset`) replaces the prop instead of merging it.
+
+---
+
+# Once Props
+
+Once props are resolved once and then remembered by the client, which skips them on later visits until they expire. Good for data that is expensive and rarely changes (permissions, plans, config).
+
+```ts
+import { once } from 'inertia-nestjs';
+
+return {
+  permissions: once(() => this.permissions.forUser(user), { expiresIn: 60 * 60 * 1000 }), // 1 hour
+  plans: once(() => this.plans.all(), { key: 'plans-v2' }), // change the key to invalidate everyone's copy
+  config: once(() => this.config.public(), { fresh: true }), // resend this time anyway
+};
+```
+
+The client reports what it holds in `X-Inertia-Except-Once-Props`; those props are skipped on normal visits but always resolved on an explicit partial reload that asks for them.
+
+Two things to know:
+
+- **The client only reports once props on the page it is leaving.** A once prop used by a single page is sent again whenever the user comes back from another page. Once props pay off as **shared props** (from your `HandleInertiaRequests.share()`, present on every page) or for a page reloading itself.
+- **Give user-specific once props a per-user `key`.** Otherwise the client keeps a guest's value after sign-in (or another user's after switching accounts) until it expires:
+
+```ts
+// in HandleInertiaRequests.share(req)
+permissions: once(() => this.permissions.forUser(user), {
+  key: `permissions:${user?.id ?? 'guest'}`,
+  expiresIn: 60_000,
+}),
+```
+
+---
+
+# Infinite Scroll
+
+`scroll()` feeds the client's `<InfiniteScroll>` component. Items under `wrapper` (default `'data'`) are appended as the user scrolls down, or prepended when scrolling up.
+
+```ts
+import { scroll } from 'inertia-nestjs';
+
+@Get('posts')
+@Inertia('Posts/Index')
+async index(@Query('page') page = '1') {
+  return {
+    posts: scroll(() => this.posts.paginate(Number(page)), {
+      // Pagination state for the client, from your paginator's shape:
+      metadata: (p) => ({
+        pageName: 'page',
+        currentPage: p.page,
+        previousPage: p.page > 1 ? p.page - 1 : null,
+        nextPage: p.hasMore ? p.page + 1 : null,
+      }),
+      // wrapper: 'items',   // if the list isn't under `data`
+      // defer: true,        // load after the first render
+    }),
+  };
+}
+```
 
 ---
 
@@ -462,6 +610,31 @@ async logout(@Req() req: Request, @Res() res: Response) {
 
 ---
 
+# URL Fragments in Redirects
+
+Redirects to a URL with a fragment (`/posts/1#comments`) just work: for Inertia visits the middleware answers with `409` + `X-Inertia-Redirect`, and the client visits that URL with the fragment intact. Prefetches and plain browser requests get the redirect unchanged.
+
+`preserveFragment()` keeps the fragment of the URL the client **requested** across your redirect. The browser never sends fragments to the server, so the client must request a URL that carries one — e.g. pass the current fragment along when posting from `/page#comments`:
+
+```tsx
+// client
+router.delete(`/posts/${id}/comments${window.location.hash}`);
+```
+
+```ts
+// server: the redirect to /page lands on /page#comments
+this.inertia.preserveFragment(res);
+res.redirect(303, '/page');
+```
+
+---
+
+# BigInt Values
+
+Props can contain `BigInt` (e.g. `bigint` columns from Prisma or TypeORM). They are sent as `{ "$bigint": "<digits>" }` with `preserveBigIntegers: true`, and the v3 client turns them back into `BigInt`. Nothing to configure — a plain `JSON.stringify` would throw on them.
+
+---
+
 # Flash Data
 
 Flash one-off data (e.g. a success toast) to be read on the **next** request only, separate from validation `errors`.
@@ -477,6 +650,8 @@ async create(@Body() dto: CreateUserDto, @Res() res: Response) {
 ```
 
 It is sent as the top-level `flash` field of the page object, so the client reads it via `usePage().flash.message` or the `router.on('flash', …)` event on the next page.
+
+Everything flashed in one response is merged: calling `flash()` twice, or `flash()` plus a redirect back with validation errors, keeps all of it.
 
 > `props.flash` is still populated for backwards compatibility but is deprecated and will be removed in 2.0 — it also ends up in saved history state, so going back re-shows old toasts.
 
@@ -622,6 +797,9 @@ InertiaModule.forRootAsync({
 | `defer(fn, group?, rescue?)` | Loaded asynchronously; with `rescue: true` a throwing `fn` is omitted and listed in `rescuedProps` instead of failing the request |
 | `merge(fn, { prepend?, at?, matchOn? })` | Append (or prepend) new data to existing client data |
 | `deepMerge(fn, { matchOn? })` | Deep-merge nested objects with existing client data |
+| `defer(fn, { group?, rescue?, merge?, deepMerge? })` | Deferred, optionally merged into existing client data |
+| `once(fn, { key?, expiresIn?, fresh? })` | Resolved once, then skipped while the client holds it |
+| `scroll(fn, { metadata, wrapper?, defer? })` | Paginated data for `<InfiniteScroll>` |
 
 ---
 

@@ -1,0 +1,10 @@
+<html>
+  <body>
+    {{#if ssrBody}}
+      {{{ssrBody}}}
+    {{else}}
+      <script type="application/json" data-page="app">{{{json page}}}</script>
+      <div id="app"></div>
+    {{/if}}
+  </body>
+</html>

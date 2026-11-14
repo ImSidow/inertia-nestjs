@@ -1,4 +1,5 @@
 import type { SsrOptions } from '../ssr/ssr-options';
+import type { InertiaExceptionHandler } from './inertia-exception-response';
 
 export type InertiaProps = Record<string, unknown>;
 
@@ -7,15 +8,8 @@ export type AlwaysProp<T = unknown> = {
     _type: 'always';
     fn: () => T | Promise<T>;
 };
-export type DeferProp<T = unknown> = {
-    _type: 'defer';
-    fn: () => T | Promise<T>;
-    group?: string;
-    rescue?: boolean;
-};
-export type MergeProp<T = unknown> = {
-    _type: 'merge';
-    fn: () => T | Promise<T>;
+/** How the client merges a prop into the data it already has. */
+export type MergeStrategy = {
     /** Defaults to 'append'. */
     mode?: 'append' | 'prepend' | 'deep';
     /** Merge at a nested path (e.g. 'data' for a paginator) instead of the prop root. */
@@ -23,8 +17,53 @@ export type MergeProp<T = unknown> = {
     /** Item key fields to match on when merging, relative to the prop (e.g. 'id', 'data.id'). */
     matchOn?: string[];
 };
+export type DeferProp<T = unknown> = {
+    _type: 'defer';
+    fn: () => T | Promise<T>;
+    group?: string;
+    rescue?: boolean;
+    /** Merge the loaded value into existing client data instead of replacing it. */
+    merge?: MergeStrategy;
+};
+export type MergeProp<T = unknown> = {
+    _type: 'merge';
+    fn: () => T | Promise<T>;
+} & MergeStrategy;
+export type OnceProp<T = unknown> = {
+    _type: 'once';
+    fn: () => T | Promise<T>;
+    /** Key the client remembers it under; defaults to the prop path. */
+    key?: string;
+    /** Milliseconds until the client's copy expires and is fetched again. */
+    expiresIn?: number;
+    /** Always resend, even when the client already holds it. */
+    fresh?: boolean;
+};
+/** Pagination state the client's <InfiniteScroll> needs. */
+export interface ScrollMetadata {
+    pageName: string;
+    previousPage: number | string | null;
+    nextPage: number | string | null;
+    currentPage: number | string | null;
+}
+export type ScrollProp<T = unknown> = {
+    _type: 'scroll';
+    fn: () => T | Promise<T>;
+    /** Key holding the items inside the value, merged on each page. Defaults to 'data'. */
+    wrapper: string;
+    metadata: ScrollMetadata | ((value: T) => ScrollMetadata);
+    /** Deferred group name; load after the first render. */
+    deferGroup?: string;
+};
 
-export type PropValue = unknown | LazyProp | AlwaysProp | DeferProp | MergeProp;
+export type PropValue =
+    | unknown
+    | LazyProp
+    | AlwaysProp
+    | DeferProp
+    | MergeProp
+    | OnceProp
+    | ScrollProp;
 
 /**
  * The Inertia page object sent to the client.
@@ -48,6 +87,14 @@ export interface InertiaPage {
     rescuedProps?: string[];
     /** One-off flash data; the v3 client exposes it via the `inertia:flash` event. */
     flash?: Record<string, unknown>;
+    /** Once props by key: the prop path and when the client's copy expires (ms timestamp). */
+    onceProps?: Record<string, { prop: string; expiresAt: number | null }>;
+    /** Pagination state per infinite-scroll prop. */
+    scrollProps?: Record<string, ScrollMetadata & { reset: boolean }>;
+    /** Props contain `{ "$bigint": "<digits>" }` markers the client turns into BigInt. */
+    preserveBigIntegers?: boolean;
+    /** Keep the original request's URL fragment after the redirect that led here. */
+    preserveFragment?: boolean;
 }
 
 /**
@@ -80,6 +127,16 @@ export interface InertiaModuleOptions {
      * SSR options. When provided, SSR is activated using the default HttpGateway.
      */
     ssr?: SsrOptions;
+
+    /**
+     * Answer unhandled errors (404s, 500s, …) with an Inertia error page instead
+     * of the default JSON, which the client would show raw in its error dialog.
+     * Not used for clients that ask for JSON only (`Accept: application/json`).
+     * Shared props are included when the Inertia middleware ran for the request.
+     *
+     * Equivalent to inertia-laravel's `Inertia::handleExceptionsUsing()`.
+     */
+    handleExceptionsUsing?: InertiaExceptionHandler;
 }
 
 /**

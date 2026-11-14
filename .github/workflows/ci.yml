@@ -16,9 +16,24 @@ jobs:
     test:
         runs-on: ubuntu-latest
 
+        name: Node ${{ matrix.node-version }} / NestJS ${{ matrix.nestjs }}
+
         strategy:
+            fail-fast: false
             matrix:
-                node-version: [18, 20]
+                # Node 20 resolves to the latest 20.x (20.19+), which NestJS 12
+                # and Vitest 4 need for require() of ES modules.
+                node-version: [20, 22, 24]
+                # Every NestJS major in the peerDependencies range.
+                nestjs: [10, 11, 12]
+                # @fastify/view major per NestJS: Nest 10 runs Fastify 4 (view 9), Nest 11+ Fastify 5.
+                include:
+                    - nestjs: 10
+                      fastify-view: 9
+                    - nestjs: 11
+                      fastify-view: 12
+                    - nestjs: 12
+                      fastify-view: 12
 
         steps:
             - name: Checkout repository
@@ -31,6 +46,19 @@ jobs:
 
             - name: Install dependencies
               run: npm install
+
+            - name: Install NestJS ${{ matrix.nestjs }}
+              run: >-
+                  npm install --no-save
+                  @nestjs/common@^${{ matrix.nestjs }}
+                  @nestjs/core@^${{ matrix.nestjs }}
+                  @nestjs/platform-express@^${{ matrix.nestjs }}
+                  @nestjs/platform-fastify@^${{ matrix.nestjs }}
+                  @nestjs/testing@^${{ matrix.nestjs }}
+                  @fastify/view@^${{ matrix.fastify-view }}
+
+            - name: Type-check (src and tests)
+              run: npx tsc --noEmit -p tsconfig.json
 
             - name: Build package
               run: npm run build

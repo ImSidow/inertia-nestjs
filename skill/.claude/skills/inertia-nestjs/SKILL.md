@@ -65,7 +65,7 @@ The handler's return value is the props object. `url` defaults to `req.originalU
 ## Prop Helpers
 
 ```typescript
-import { lazy, always, defer, merge } from 'inertia-nestjs';
+import { lazy, always, defer, merge, deepMerge, once, scroll } from 'inertia-nestjs';
 
 return {
   users: lazy(() => this.usersService.findAll()), // only on partial reloads that request it
@@ -75,6 +75,10 @@ return {
   stats3: defer(() => this.riskyCompute(), 'group', true), // rescue: true -> if the callback throws, the prop is omitted and listed in page.rescuedProps instead of failing the request
   notifications: merge(() => this.getNew()),         // client merges instead of replacing
   // merge(fn, { matchOn: 'id' | at: 'data' | prepend: true }), deepMerge(fn) for nested objects.
+  // defer(fn, { group, rescue, merge, deepMerge }) — deferred + merged ("load more").
+  permissions: once(() => this.getPermissions(user), { key: `permissions:${user?.id ?? 'guest'}`, expiresIn: 3_600_000 }), // best as a SHARED prop: the client only skips once props present on the page it is leaving; per-user key or a guest's value sticks after sign-in
+  posts: scroll(() => this.paginate(page), { metadata: (p) => ({ pageName: 'page', currentPage: p.page, previousPage: p.prev, nextPage: p.next }) }), // <InfiniteScroll>
+  // BigInt values are encoded automatically; redirects to /x#frag keep the fragment.
   // Helpers work at any depth; partial reloads accept dot paths (only: ['auth.permissions']).
 };
 ```
@@ -123,17 +127,22 @@ Register it in place of the base middleware: `consumer.apply(InertiaShareMiddlew
 ## Validation
 
 ```typescript
+// main.ts — required for per-field errors (Nest's default ValidationPipe drops the field names)
+import { InertiaValidationPipe } from 'inertia-nestjs';
+app.useGlobalPipes(new InertiaValidationPipe({ whitelist: true }));
+// own pipe setup? new ValidationPipe({ exceptionFactory: inertiaExceptionFactory })
+
 import { InertiaValidate } from 'inertia-nestjs';
 
 @Post('/users')
 @InertiaValidate() // or @InertiaValidate('Users/Create') to redirect to a specific component
+@Redirect('/users', 302) // optional success target; without it, success redirects back (303)
 create(@Body() dto: CreateUserDto) {
-  // class-validator throws -> InertiaValidationFilter catches it, flashes errors,
-  // redirects back (302) with the errors in the next page's props.errors
+  // invalid -> InertiaValidationFilter flashes { field: message } and redirects back (303)
 }
 ```
 
-Client reads `usePage().props.errors` (or `useForm`'s `errors`) after the redirect.
+Client reads `usePage().props.errors` (or `useForm`'s `errors`) after the redirect; nested DTO fields use dot paths (`'address.city'`). On success, `@Redirect()` (or a returned `{ url }`), an `@Inertia()` page, or a response the handler sent itself wins over "redirect back".
 
 ## Flash Data
 
@@ -142,7 +151,7 @@ this.inertia.flash(res, { message: 'Saved!' }); // one-off data for the next req
 res.redirect(303, '/users');
 ```
 
-Sent as the top-level `page.flash` field — client reads `usePage().flash.message` (or `router.on('flash', …)`) on the next page. `props.flash` is also populated but deprecated. Separate mechanism from validation `errors` — same underlying `__inertia_flash` cookie, different payload key, so calling both `flash()` and a redirect-back-with-errors in the same response overwrites rather than merges (last write wins).
+Sent as the top-level `page.flash` field — client reads `usePage().flash.message` (or `router.on('flash', …)`) on the next page. `props.flash` is also populated but deprecated. Separate from validation `errors`, but both travel in the same `__inertia_flash` cookie and everything flashed in one response is merged — `flash()` twice, or `flash()` plus a redirect back with errors, keeps all of it. `this.inertia.preserveFragment(res)` before a redirect keeps the fragment of the URL the client *requested* — browsers never send fragments, so the client must request e.g. `` `/posts/1/comments${window.location.hash}` ``.
 
 ## Exception Handling
 
@@ -158,7 +167,20 @@ create() { ... }
 update() { ... }
 ```
 
-Flashes the exception's message as an error and redirects back (or to `returnPath` if given), same mechanism as validation errors — `@InertiaValidate` and `@InertiaHandleException` share the underlying interceptor/filter.
+Flashes the exception's message as an error and redirects back (or to `returnPath` if given), same mechanism as validation errors — `@InertiaValidate` and `@InertiaHandleException` share the underlying interceptor/filter. Both work on a controller class too (method-level wins) — e.g. `@UseGuards(AuthGuard) @InertiaHandleException({ codes: [401], returnPath: '/login' })` on the class sends signed-out users to /login from every route. Plain browser requests (bookmarks, new tabs) are redirected the same way; only `Accept: application/json`-only clients get the JSON error. "Redirect back" ignores a `Referer` from another site (goes to `/`).
+
+**Error pages:** unhandled errors (unknown route, crash) otherwise reach the client as JSON shown raw in its error dialog. Render your own page with the right status:
+
+```typescript
+InertiaModule.forRoot({
+  handleExceptionsUsing: (error) => {
+    if ([403, 404, 500, 503].includes(error.statusCode)) return error.render('error', { status: error.statusCode });
+    // nothing returned -> default response
+  },
+});
+```
+
+Works for Inertia visits and first (HTML) visits; shared props are included; JSON-only clients keep JSON; a throwing callback falls back to the default. Never put `error.exception`'s message into props.
 
 ## SSR
 

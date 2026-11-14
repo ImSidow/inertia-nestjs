@@ -3,13 +3,12 @@ import { INERTIA_HANDLE_EXCEPTION_KEY } from 'src/common/inertia.constants';
 import { INERTIA_VALIDATE_KEY } from 'src/decorators/inertia-validate.decorator';
 
 function makeReflector(handleMeta?: unknown, validateKey?: string) {
-    return {
-        get: jest.fn((key: string) => {
-            if (key === INERTIA_HANDLE_EXCEPTION_KEY) return handleMeta;
-            if (key === INERTIA_VALIDATE_KEY) return validateKey;
-            return undefined;
-        }),
-    } as any;
+    const lookup = (key: string) => {
+        if (key === INERTIA_HANDLE_EXCEPTION_KEY) return handleMeta;
+        if (key === INERTIA_VALIDATE_KEY) return validateKey;
+        return undefined;
+    };
+    return { get: vi.fn(lookup), getAllAndOverride: vi.fn(lookup) } as any;
 }
 
 describe('resolveInertiaHandleExceptionCodes', () => {

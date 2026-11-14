@@ -8,7 +8,7 @@ import {
     InertiaModuleOptions,
     InertiaPage,
     InertiaProps,
-    MergeProp,
+    MergeStrategy,
     PropValue,
     RenderOptions,
 } from '../common/inertia.interfaces';
@@ -19,9 +19,20 @@ import {
     INERTIA_PARTIAL_DATA_HEADER,
     INERTIA_PARTIAL_EXCEPT_HEADER,
     INERTIA_RESET_HEADER,
+    INERTIA_EXCEPT_ONCE_PROPS_HEADER,
+    INERTIA_INFINITE_SCROLL_MERGE_INTENT_HEADER,
 } from '../common/inertia.constants';
-import { always, isAlways, isDefer, isLazy, isMerge } from '../common/inertia.props';
+import {
+    always,
+    isAlways,
+    isDefer,
+    isLazy,
+    isMerge,
+    isOnce,
+    isScroll,
+} from '../common/inertia.props';
 import { SSR_GATEWAY, SsrGateway } from '../ssr/ssr-gateway.interface';
+import { InertiaExceptionResponse } from '../common/inertia-exception-response';
 
 /** True for object literals (`{}`), false for arrays, null, Date, and other class instances. */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -69,9 +80,8 @@ export class InertiaService {
 
     share(key: string, value: PropValue, req?: HttpRequestLike): this {
         if (req) {
-            const target = (req as any).__inertiaShared ?? {};
-            target[key] = value;
-            (req as any).__inertiaShared = target;
+            const state = inertiaHttpAdapter.raw(req);
+            state.__inertiaShared = { ...state.__inertiaShared, [key]: value };
             return this;
         }
 
@@ -83,7 +93,7 @@ export class InertiaService {
         key?: string,
         req?: HttpRequestLike,
     ): Record<string, PropValue> | PropValue | undefined {
-        const requestShared = (req && (req as any).__inertiaShared) || {};
+        const requestShared = (req && inertiaHttpAdapter.raw(req).__inertiaShared) || {};
         const combined = { ...this.sharedProps, ...requestShared };
 
         if (!key) return combined;
@@ -134,10 +144,14 @@ export class InertiaService {
         );
         const isPartial = isInertiaRequest && partialComponent === component;
 
-        const flash: { errors?: Record<string, unknown>; flash?: Record<string, unknown> } =
-            (req as any).__inertiaFlash ?? {};
-        const requestShared: Record<string, PropValue> =
-            (req as any).__inertiaShared ?? {};
+        const state = inertiaHttpAdapter.raw(req);
+        const flash: {
+            errors?: Record<string, unknown>;
+            flash?: Record<string, unknown>;
+            preserveFragment?: boolean;
+        } =
+            state.__inertiaFlash ?? {};
+        const requestShared: Record<string, PropValue> = state.__inertiaShared ?? {};
         const { __factory__: factory, ...staticShared } = this.sharedProps;
         const factoryShared: Record<string, PropValue> =
             typeof factory === 'function'
@@ -156,15 +170,20 @@ export class InertiaService {
         // Errors come back on every response, partial reloads included, so the
         // client can clear stale ones (inertia-laravel shares them as Inertia::always()).
         const { errors } = combinedProps;
-        if (!isAlways(errors) && !isDefer(errors) && !isMerge(errors) && !isLazy(errors)) {
+        if (![isAlways, isDefer, isMerge, isLazy, isOnce, isScroll].some((is) => is(errors))) {
             combinedProps.errors = always(() => errors);
         }
 
         const ctx: ResolveContext = {
             isPartial,
+            isInertia: isInertiaRequest,
             only: isPartial ? this.parseListHeader(req, INERTIA_PARTIAL_DATA_HEADER) : [],
             except: isPartial ? this.parseListHeader(req, INERTIA_PARTIAL_EXCEPT_HEADER) : [],
             reset: this.parseListHeader(req, INERTIA_RESET_HEADER),
+            loadedOnce: this.parseListHeader(req, INERTIA_EXCEPT_ONCE_PROPS_HEADER),
+            scrollIntent: inertiaHttpAdapter.getHeader(req, INERTIA_INFINITE_SCROLL_MERGE_INTENT_HEADER),
+            onceProps: {},
+            scrollProps: {},
             deferredProps: {},
             mergeProps: [],
             prependProps: [],
@@ -172,12 +191,24 @@ export class InertiaService {
             matchPropsOn: [],
             rescuedProps: [],
         };
-        const resolvedProps = await this.resolveProps(combinedProps, ctx);
+        // JSON.stringify throws on BigInt (e.g. Prisma/TypeORM bigint columns), so
+        // encode them as markers the v3 client turns back into BigInt.
+        const encoded = encodeBigInts(await this.resolveProps(combinedProps, ctx));
+        const resolvedProps = encoded.value as InertiaProps;
 
         const currentVersion = await this.getVersion();
         // `errors` is always shared, matching inertia-laravel's default middleware.
         const sharedProps = [...new Set(['errors', ...Object.keys(shared)])];
-        const { deferredProps, mergeProps, prependProps, deepMergeProps, matchPropsOn, rescuedProps } = ctx;
+        const {
+            deferredProps,
+            mergeProps,
+            prependProps,
+            deepMergeProps,
+            matchPropsOn,
+            rescuedProps,
+            onceProps,
+            scrollProps,
+        } = ctx;
 
         return {
             component,
@@ -197,6 +228,10 @@ export class InertiaService {
             ...(deepMergeProps.length ? { deepMergeProps } : {}),
             ...(matchPropsOn.length ? { matchPropsOn } : {}),
             ...(rescuedProps.length ? { rescuedProps } : {}),
+            ...(Object.keys(onceProps).length ? { onceProps } : {}),
+            ...(Object.keys(scrollProps).length ? { scrollProps } : {}),
+            ...(encoded.found ? { preserveBigIntegers: true } : {}),
+            ...(flash.preserveFragment ? { preserveFragment: true } : {}),
             ...(flash.flash ? { flash: flash.flash } : {}),
         };
     }
@@ -235,6 +270,9 @@ export class InertiaService {
                 ? await this.ssrGateway.dispatch(page)
                 : null;
 
+        // The first visit is HTML: it needs the status too (404/500 error pages, 422 re-renders).
+        if (options.status !== undefined) inertiaHttpAdapter.setStatus(res, options.status);
+
         await inertiaHttpAdapter.renderAsync(res, this.rootView, {
             page,
             ssrHead: ssrResponse?.head ?? [],
@@ -251,10 +289,8 @@ export class InertiaService {
         component: string,
         options: RenderOptions = {},
     ): Promise<void> {
-        const responseState = res as TResponse & {
-            headersSent?: boolean;
-            __inertiaHandled?: boolean;
-        };
+        // Fastify's reply has no headersSent; its raw Node response does.
+        const responseState = inertiaHttpAdapter.raw(res);
 
         if (responseState.headersSent || responseState.__inertiaHandled) {
             return;
@@ -267,6 +303,38 @@ export class InertiaService {
         await this.respond(req, res, page, options);
     }
 
+    /**
+     * Answer an unhandled error with the app's error page, if `handleExceptionsUsing`
+     * renders one. Returns false to fall back to the default response; any failure
+     * here (including the callback throwing) is logged and falls back too, so an
+     * error page can never turn one error into two.
+     *
+     * Builds and sends the page directly rather than via render(): the error may
+     * have happened mid-render, after the response was marked as rendered.
+     */
+    async renderException(
+        req: HttpRequestLike,
+        res: HttpResponseLike,
+        exception: unknown,
+        statusCode: number,
+    ): Promise<boolean> {
+        const handler = this.options.handleExceptionsUsing;
+        if (!handler) return false;
+        try {
+            const result = await handler(new InertiaExceptionResponse(exception, req, res, statusCode));
+            if (!(result instanceof InertiaExceptionResponse) || !result.page) return false;
+            const page = await this.buildPage(req, result.page.component, { props: result.page.props });
+            await this.respond(req, res, page, { status: statusCode });
+            return true;
+        } catch (err) {
+            this.logger.error(
+                'handleExceptionsUsing failed; sending the default error response',
+                err instanceof Error ? err.stack : String(err),
+            );
+            return false;
+        }
+    }
+
     redirectBack<
         TRequest extends HttpRequestLike = HttpRequestLike,
         TResponse extends HttpResponseLike = HttpResponseLike,
@@ -276,27 +344,14 @@ export class InertiaService {
         errors?: Record<string, string>,
         path?: string,
     ): void {
-        const referer =
-            path ?? inertiaHttpAdapter.getHeader(req, 'referer') ?? '/';
-        if (errors) {
-            inertiaHttpAdapter.setCookie(
-                res,
-                '__inertia_flash',
-                JSON.stringify({ errors }),
-                {
-                    httpOnly: true,
-                    sameSite: 'lax',
-                    maxAge: 10_000,
-                    path: '/',
-                },
-            );
-        }
-        inertiaHttpAdapter.redirect(res, 303, referer);
+        const back = path ?? inertiaHttpAdapter.sameOriginReferer(req) ?? '/';
+        if (errors) this.writeFlash(res, { errors });
+        inertiaHttpAdapter.redirect(res, 303, back);
     }
 
     /**
      * Flash arbitrary one-off data (e.g. a success toast) to be read on the
-     * next request via `props.flash`. Unlike `share()`, this data does not
+     * next request via `page.flash`. Unlike `share()`, this data does not
      * persist beyond the next response. Does not redirect — call this before
      * issuing your own redirect.
      */
@@ -304,17 +359,36 @@ export class InertiaService {
         res: TResponse,
         data: Record<string, unknown>,
     ): void {
-        inertiaHttpAdapter.setCookie(
-            res,
-            '__inertia_flash',
-            JSON.stringify({ flash: data }),
-            {
-                httpOnly: true,
-                sameSite: 'lax',
-                maxAge: 10_000,
-                path: '/',
-            },
-        );
+        this.writeFlash(res, { flash: data });
+    }
+
+    /**
+     * Keep the original request's URL fragment (`#section`) across the redirect
+     * this response issues, e.g. a form posted from `/page#comments` that
+     * redirects back. Call before redirecting.
+     */
+    preserveFragment<TResponse extends HttpResponseLike = HttpResponseLike>(res: TResponse): void {
+        this.writeFlash(res, { preserveFragment: true });
+    }
+
+    /**
+     * Everything flashed during one response goes into one cookie, merged, so
+     * flash(), validation errors and preserveFragment() don't overwrite each other.
+     */
+    private writeFlash(res: HttpResponseLike, data: Record<string, unknown>): void {
+        const state = inertiaHttpAdapter.raw(res);
+        const pending: Record<string, any> = state.__inertiaFlashOut ?? {};
+        state.__inertiaFlashOut = {
+            ...pending,
+            ...data,
+            ...(data.flash ? { flash: { ...pending.flash, ...(data.flash as object) } } : {}),
+        };
+        inertiaHttpAdapter.setCookie(res, '__inertia_flash', JSON.stringify(state.__inertiaFlashOut), {
+            httpOnly: true,
+            sameSite: 'lax',
+            maxAge: 10_000,
+            path: '/',
+        });
     }
 
     location<
@@ -372,10 +446,12 @@ export class InertiaService {
             if (isDefer(value)) {
                 if (!ctx.isPartial) {
                     (ctx.deferredProps[value.group ?? 'default'] ??= []).push(path);
+                    if (value.merge) collectMergeMetadata(path, value.merge, ctx);
                     continue;
                 }
                 try {
                     resolved[key] = await value.fn();
+                    if (value.merge) collectMergeMetadata(path, value.merge, ctx);
                 } catch (err) {
                     if (!value.rescue) throw err;
                     this.logger.error(
@@ -385,6 +461,41 @@ export class InertiaService {
                     // Matches inertia-laravel: omit the prop and list it in
                     // `rescuedProps` so the client's <Deferred> rescue slot renders.
                     ctx.rescuedProps.push(path);
+                }
+                continue;
+            }
+
+            if (isScroll(value)) {
+                // Scrolling up asks for the previous page, which goes on top.
+                const strategy: MergeStrategy = {
+                    mode: ctx.scrollIntent === 'prepend' ? 'prepend' : 'append',
+                    at: value.wrapper,
+                };
+                if (!ctx.isPartial && value.deferGroup) {
+                    (ctx.deferredProps[value.deferGroup] ??= []).push(path);
+                    collectMergeMetadata(path, strategy, ctx);
+                    continue;
+                }
+                const page = await value.fn();
+                const metadata =
+                    typeof value.metadata === 'function' ? value.metadata(page) : value.metadata;
+                collectMergeMetadata(path, strategy, ctx);
+                ctx.scrollProps[path] = { ...metadata, reset: ctx.reset.includes(path) };
+                resolved[key] = page;
+                continue;
+            }
+
+            if (isOnce(value)) {
+                const onceKey = value.key ?? path;
+                // Skip it on a normal visit when the client already holds an
+                // unexpired copy; an explicit partial reload still resolves it.
+                const held = !ctx.isPartial && ctx.isInertia && !value.fresh && ctx.loadedOnce.includes(onceKey);
+                if (!held) resolved[key] = await value.fn();
+                if (!ctx.isPartial || (matchesOnly(path, ctx) && !matchesExcept(path, ctx))) {
+                    ctx.onceProps[onceKey] = {
+                        prop: path,
+                        expiresAt: value.expiresIn != null ? Date.now() + value.expiresIn : null,
+                    };
                 }
                 continue;
             }
@@ -419,9 +530,16 @@ export class InertiaService {
 
 interface ResolveContext {
     isPartial: boolean;
+    isInertia: boolean;
     only: string[];
     except: string[];
     reset: string[];
+    /** Once-prop keys the client already holds (X-Inertia-Except-Once-Props). */
+    loadedOnce: string[];
+    /** X-Inertia-Infinite-Scroll-Merge-Intent. */
+    scrollIntent?: string;
+    onceProps: NonNullable<InertiaPage['onceProps']>;
+    scrollProps: NonNullable<InertiaPage['scrollProps']>;
     deferredProps: Record<string, string[]>;
     mergeProps: string[];
     prependProps: string[];
@@ -450,7 +568,7 @@ function partialIncludes(path: string, ctx: ResolveContext): boolean {
 
 function collectMergeMetadata(
     path: string,
-    prop: MergeProp,
+    prop: MergeStrategy,
     ctx: ResolveContext,
 ): void {
     if (ctx.reset.includes(path)) return;
@@ -469,4 +587,43 @@ function collectMergeMetadata(
     for (const field of prop.matchOn ?? []) {
         ctx.matchPropsOn.push(`${path}.${field}`);
     }
+}
+
+/**
+ * Replace every BigInt with `{ $bigint: "<digits>" }`, the marker the v3 client
+ * turns back into BigInt. Objects are only copied along a path that contains a
+ * BigInt, so the common no-BigInt case allocates nothing. Values with their own
+ * toJSON (Date, Buffer, …) are left to serialize themselves, and a cycle is left
+ * for JSON.stringify to report as before.
+ */
+function encodeBigInts(input: unknown): { value: unknown; found: boolean } {
+    let found = false;
+    const ancestors = new Set<object>();
+
+    const walk = (value: unknown): unknown => {
+        if (typeof value === 'bigint') {
+            found = true;
+            return { $bigint: value.toString() };
+        }
+        if (typeof value !== 'object' || value === null || ancestors.has(value)) return value;
+        if (typeof (value as { toJSON?: unknown }).toJSON === 'function') return value;
+
+        ancestors.add(value);
+        try {
+            let changed = false;
+            const track = (item: unknown) => {
+                const next = walk(item);
+                if (next !== item) changed = true;
+                return next;
+            };
+            const copy = Array.isArray(value)
+                ? value.map(track)
+                : Object.fromEntries(Object.entries(value).map(([k, v]) => [k, track(v)]));
+            return changed ? copy : value;
+        } finally {
+            ancestors.delete(value);
+        }
+    };
+
+    return { value: walk(input), found };
 }

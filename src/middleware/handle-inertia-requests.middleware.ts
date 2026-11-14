@@ -9,6 +9,7 @@ import {
     INERTIA_HEADER,
     INERTIA_LOCATION_HEADER,
     INERTIA_VERSION_HEADER,
+    INERTIA_REDIRECT_HEADER,
 } from '../common/inertia.constants';
 import { InertiaService } from '../services/inertia.service';
 
@@ -87,56 +88,56 @@ export class HandleInertiaRequests implements NestMiddleware {
                 return;
             }
 
-            // Intercept response to convert 301/302 → 303 on non-GET Inertia requests
-            if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-                const originalRedirect =
-                    typeof res.redirect === 'function'
-                        ? res.redirect.bind(res)
-                        : undefined;
-
-                if (originalRedirect) {
-                    (res.redirect as unknown) = (
-                        urlOrStatus: string | number,
-                        url?: string,
-                    ) => {
-                        let status: number;
-                        let location: string;
-
-                        if (typeof urlOrStatus === 'string') {
-                            status = 302;
-                            location = urlOrStatus;
-                        } else {
-                            status = urlOrStatus;
-                            location = url!;
+            // Rewrite redirects as they're written. Patching the raw Node writeHead
+            // catches every redirect path: Express res.redirect, Fastify
+            // reply.redirect, @Redirect(), or a hand-set Location header.
+            //  - A Location with a #fragment becomes 409 + X-Inertia-Redirect, so
+            //    the client can visit it with the fragment intact (not for prefetches).
+            //  - Otherwise 301/302 → 303 on non-GET requests, so the browser follows with GET.
+            const nonGet = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+            const prefetch = inertiaHttpAdapter.getHeader(req, 'purpose') === 'prefetch';
+            const raw = inertiaHttpAdapter.raw(res);
+            const writeHead = raw.writeHead;
+            if (typeof writeHead === 'function') {
+                raw.writeHead = function (statusCode: number, ...rest: unknown[]) {
+                    if (statusCode >= 300 && statusCode < 400 && !prefetch) {
+                        // Fastify passes headers to writeHead; Express sets them first.
+                        const passed = rest.find(
+                            (arg): arg is Record<string, unknown> =>
+                                !!arg && typeof arg === 'object' && !Array.isArray(arg),
+                        );
+                        const passedKey = passed && Object.keys(passed).find((k) => k.toLowerCase() === 'location');
+                        const location = String((passedKey ? passed![passedKey] : this.getHeader('location')) ?? '');
+                        if (location.includes('#')) {
+                            if (passedKey) delete passed![passedKey];
+                            this.removeHeader('location');
+                            this.setHeader(INERTIA_REDIRECT_HEADER, location);
+                            // Drop the 3xx status message ("Found") along with the code.
+                            const args = rest.filter((arg) => typeof arg !== 'string');
+                            return writeHead.call(this, 409, ...args);
                         }
-
-                        if (status === 301 || status === 302) {
-                            status = 303;
-                        }
-
-                        return originalRedirect(status, location);
-                    };
-                }
+                    }
+                    const code = nonGet && (statusCode === 301 || statusCode === 302) ? 303 : statusCode;
+                    return writeHead.call(this, code, ...rest);
+                };
             }
         }
 
-        // Read & clear flash cookie (set by inertia.redirectBack / inertia.flash)
+        // Read & clear flash cookie (set by inertia.redirectBack / inertia.flash).
+        // cookie-parser gives a decoded value; without it, fall back to the raw header.
         const cookies = (req as any).cookies as
             | Record<string, string>
             | undefined;
-        const flashRaw = cookies?.__inertia_flash;
+        const flashRaw =
+            cookies?.__inertia_flash ??
+            readCookie(inertiaHttpAdapter.getHeader(req, 'cookie'), '__inertia_flash');
         if (flashRaw) {
             inertiaHttpAdapter.setCookie(res, '__inertia_flash', '', {
                 maxAge: 0,
                 path: '/',
             });
-            try {
-                (req as any).__inertiaFlash = JSON.parse(
-                    decodeURIComponent(flashRaw),
-                );
-            } catch {
-                // ignore malformed cookie
-            }
+            const flash = parseFlash(flashRaw);
+            if (flash) inertiaHttpAdapter.raw(req).__inertiaFlash = flash;
         }
 
         // Share request-level props (subclasses can override). Passed with
@@ -199,4 +200,31 @@ export class HandleInertiaRequests implements NestMiddleware {
         );
         inertiaHttpAdapter.end(res);
     }
+}
+
+/** Raw (still URI-encoded) value of one cookie from a `Cookie` request header. */
+function readCookie(header: string | undefined, name: string): string | undefined {
+    for (const part of header?.split(';') ?? []) {
+        const eq = part.indexOf('=');
+        if (eq !== -1 && part.slice(0, eq).trim() === name) {
+            return part.slice(eq + 1).trim();
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Parse the flash payload, decoding at most once: cookie-parser hands over an
+ * already-decoded value, and decoding it again breaks messages containing `%`.
+ */
+function parseFlash(raw: string): Record<string, unknown> | undefined {
+    for (const candidate of [() => raw, () => decodeURIComponent(raw)]) {
+        try {
+            const value = JSON.parse(candidate());
+            if (value && typeof value === 'object') return value;
+        } catch {
+            // try the next form; a malformed cookie is ignored
+        }
+    }
+    return undefined;
 }

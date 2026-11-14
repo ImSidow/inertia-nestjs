@@ -21,6 +21,8 @@ export { InertiaHandleException, InertiaHandleExceptionOptions } from './decorat
 
 // Validation (filter + interceptor + guard — auto-registered by InertiaModule)
 export { InertiaValidationFilter } from './filters/inertia-validation.filter';
+export { InertiaValidationPipe, inertiaExceptionFactory } from './common/inertia-validation-pipe';
+export { InertiaExceptionResponse, InertiaExceptionHandler } from './common/inertia-exception-response';
 export { InertiaComponentInterceptor } from './interceptors/inertia-component.interceptor';
 export { InertiaHandleExceptionInterceptor } from './interceptors/inertia-handle-exception.interceptor';
 export { InertiaExceptionTagGuard } from './guards/inertia-exception-tag.guard';
@@ -32,11 +34,18 @@ export {
     defer,
     merge,
     deepMerge,
+    once,
+    scroll,
     MergeOptions,
+    DeferOptions,
+    OnceOptions,
+    ScrollOptions,
     isLazy,
     isAlways,
     isDefer,
     isMerge,
+    isOnce,
+    isScroll,
 } from './common/inertia.props';
 
 // Interfaces / types
@@ -50,7 +59,14 @@ export {
     AlwaysProp,
     DeferProp,
     MergeProp,
+    MergeStrategy,
+    OnceProp,
+    ScrollProp,
+    ScrollMetadata,
 } from './common/inertia.interfaces';
+
+// Request/response shapes, e.g. for overriding HandleInertiaRequests.share(req)
+export { HttpRequestLike, HttpResponseLike } from './adapters';
 
 // Constants
 export {
@@ -63,6 +79,9 @@ export {
     INERTIA_ENCRYPT_HISTORY_HEADER,
     INERTIA_CLEAR_HISTORY_HEADER,
     INERTIA_RESET_HEADER,
+    INERTIA_EXCEPT_ONCE_PROPS_HEADER,
+    INERTIA_INFINITE_SCROLL_MERGE_INTENT_HEADER,
+    INERTIA_REDIRECT_HEADER,
 } from './common/inertia.constants';
 
 // Testing

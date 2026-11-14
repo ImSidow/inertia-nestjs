@@ -15,13 +15,18 @@ export class InertiaExceptionTagGuard implements CanActivate {
     constructor(private readonly reflector: Reflector) {}
 
     canActivate(context: ExecutionContext): boolean {
-        const { codes, returnPath } = resolveInertiaHandleExceptionCodes(this.reflector, context.getHandler());
+        const { codes, returnPath, returnPathCodes } = resolveInertiaHandleExceptionCodes(
+            this.reflector,
+            context.getHandler(),
+            context.getClass(),
+        );
         if (codes === undefined) return true;
 
         const req = context.switchToHttp().getRequest<HttpRequestLike>();
         (req as Record<string, unknown>).inertiaHandleExceptionCodes = codes;
         if (returnPath) {
             (req as Record<string, unknown>).inertiaReturnPath = returnPath;
+            (req as Record<string, unknown>).inertiaReturnPathCodes = returnPathCodes;
         }
 
         return true;

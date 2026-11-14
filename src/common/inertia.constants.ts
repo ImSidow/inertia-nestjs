@@ -12,6 +12,12 @@ export const INERTIA_ENCRYPT_HISTORY_HEADER = 'x-inertia-encrypt-history';
 export const INERTIA_CLEAR_HISTORY_HEADER = 'x-inertia-clear-history';
 /** Comma-separated prop paths the client resets instead of merging. */
 export const INERTIA_RESET_HEADER = 'x-inertia-reset';
+/** Comma-separated keys of unexpired once props the client already holds. */
+export const INERTIA_EXCEPT_ONCE_PROPS_HEADER = 'x-inertia-except-once-props';
+/** 'append' or 'prepend': which way an infinite-scroll page is being merged. */
+export const INERTIA_INFINITE_SCROLL_MERGE_INTENT_HEADER = 'x-inertia-infinite-scroll-merge-intent';
+/** On a 409, the full redirect URL including its fragment; the client visits it with GET. */
+export const INERTIA_REDIRECT_HEADER = 'x-inertia-redirect';
 
 /** Metadata key used to attach Inertia render options to route handlers. */
 export const INERTIA_RENDER_KEY = 'inertia:render';

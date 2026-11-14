@@ -3,7 +3,7 @@ import { inertiaHttpAdapter } from 'src/adapters/http-adapter.utils';
 function makeRes() {
     const headers = new Map<string, string>();
     return {
-        setHeader: jest.fn((name: string, value: string): void => { headers.set(name, value); }),
+        setHeader: vi.fn((name: string, value: string): void => { headers.set(name, value); }),
         getCookie: () => headers.get('Set-Cookie'),
     };
 }

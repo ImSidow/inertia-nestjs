@@ -17,8 +17,8 @@ export interface HttpResponseLike {
     status?(code: number): this;
     code?(code: number): this;
 
-    setHeader?(name: string, value: string): this | void;
-    header?(name: string, value: string): this | void;
+    setHeader?(name: string, value: string | string[]): this | void;
+    header?(name: string, value: string | string[]): this | void;
     getHeader?(name: string): unknown;
 
     json?(body: unknown): this | void;

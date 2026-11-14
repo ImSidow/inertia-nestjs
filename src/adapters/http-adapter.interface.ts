@@ -13,7 +13,18 @@ export interface InertiaHttpAdapter {
     getRequestMethod(req: HttpRequestLike): string;
     getRequestUrl(req: HttpRequestLike): string;
 
-    setHeader(res: HttpResponseLike, name: string, value: string): void;
+    /**
+     * The underlying Node request/response. Fastify wraps it in `.raw` (and Nest
+     * middleware only sees the raw one), so per-request state is stored there.
+     */
+    raw(target: object): Record<string, any>;
+    /**
+     * The Referer when it points at this site (a path, or the request's own
+     * Host / X-Forwarded-Host); otherwise undefined, so "redirect back" can
+     * never send the browser to another site.
+     */
+    sameOriginReferer(req: HttpRequestLike): string | undefined;
+    setHeader(res: HttpResponseLike, name: string, value: string | string[]): void;
     appendVary(res: HttpResponseLike, value: string): void;
     getHeaderFromResponse(
         res: HttpResponseLike,
