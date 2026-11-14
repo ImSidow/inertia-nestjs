@@ -45,9 +45,13 @@ jobs:
               with:
                   node-version: ${{ matrix.node-version }}
 
-            # Pin the matrix versions first, then install once: an extra
-            # `npm install --no-save` on top of an install trips an npm bug
-            # ("Cannot read properties of null (reading 'edgesOut')").
+            # The npm bundled with Node 22 (10.9) crashes resolving this tree
+            # ("Cannot read properties of null (reading 'edgesOut')"); npm 11,
+            # bundled with Node 24, does not. Use npm 11 everywhere.
+            - name: Use npm 11
+              run: npm install -g npm@11 && node -v && npm -v
+
+            # Pin the matrix versions first, then install once.
             - name: Pin NestJS ${{ matrix.nestjs }}
               run: >-
                   npm pkg set
