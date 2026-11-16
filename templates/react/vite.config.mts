@@ -19,7 +19,7 @@ export default defineConfig(({ isSsrBuild }) => ({
         emptyOutDir: false,
         rollupOptions: {
           output: {
-            entryFileNames: 'ssr.js',
+            entryFileNames: 'ssr.mjs',
           },
         },
       }

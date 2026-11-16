@@ -1,6 +1,6 @@
 ---
 name: inertia-nestjs
-description: NestJS + Inertia.js adapter usage. Use when wiring InertiaModule, rendering pages with @Inertia, handling validation errors or exceptions, setting up SSR, testing Inertia responses, or scaffolding a new React frontend.
+description: NestJS + Inertia.js adapter usage. Use when wiring InertiaModule, rendering pages with @Inertia, handling validation errors or exceptions, setting up SSR, testing Inertia responses, or scaffolding a new React or Vue frontend.
 ---
 
 # inertia-nestjs
@@ -23,7 +23,7 @@ import { HandleInertiaRequests, InertiaModule } from 'inertia-nestjs';
       ssr: {
         enabled: true,
         url: 'http://127.0.0.1:13714', // SSR server; /render is appended automatically
-        bundlePath: 'bootstrap/ssr/ssr.js',
+        // bundlePath: omit it — bootstrap/ssr/ssr.mjs (scaffold output) and ssr.js are found automatically; a wrong path silently disables SSR
         timeout: 5000, // ms before falling back to CSR
         exclude: ['/admin/*'], // glob patterns to skip SSR for (falls back to CSR); '/admin' matches only that exact path, '/admin/*' matches everything under it
       },
@@ -205,10 +205,10 @@ assertInertiaLocation(res.headers, 'https://example.com');
 ## Scaffolding a New Frontend
 
 ```bash
-npx inertia-nestjs react
+npx inertia-nestjs react   # or: npx inertia-nestjs vue
 ```
 
-Copies `resources/js/{app.tsx,ssr.tsx,pages/,tsconfig.json,vite-env.d.ts}`, `resources/css/app.css`, `views/app.hbs`, and `vite.config.mts` into the current project; auto-patches `tsconfig.build.json` (excludes `resources`/`vite.config.mts`), the root `tsconfig.json` (`@/*` alias), `package.json` scripts, and `.gitignore` (adds `/bootstrap` and `/public/build` — Vite's SSR/client build output, not source); auto-installs `@inertiajs/react`, `@inertiajs/vite`, `react`, `react-dom`, `vite`, `@vitejs/plugin-react` via the detected package manager (falls back to printing the manual commands if the install fails). Then prompts (in a real terminal only — auto-declines in CI/non-TTY) to auto-wire `src/main.ts` (Handlebars view engine + static assets) and `src/app.module.ts` (`InertiaModule.forRoot()` registration), but only when those files still match the untouched `nest new` scaffold — otherwise it prints the snippet instead of guessing an edit.
+Copies `resources/js/{app,ssr}.{tsx|ts}` (React: `.tsx`, Vue: `.ts`), `resources/js/{pages/,tsconfig.json,vite-env.d.ts}`, `resources/css/app.css`, `views/app.hbs`, and `vite.config.mts` into the current project; auto-patches `tsconfig.build.json` (excludes `resources`/`vite.config.mts`), the root `tsconfig.json` (`@/*` alias), `package.json` scripts (the SSR bundle builds to `bootstrap/ssr/ssr.mjs`), and `.gitignore` (adds `/bootstrap` and `/public/build` — Vite's SSR/client build output, not source). A tsconfig with comments is left untouched and the exact lines to add are printed. Auto-installs the framework's packages via the detected package manager — React: `@inertiajs/react`, `@inertiajs/vite`, `react`, `react-dom`, `vite`, `@vitejs/plugin-react`; Vue: `@inertiajs/vue3`, `@inertiajs/vite`, `vue`, `vite`, `@vitejs/plugin-vue`, `vue-tsc` (falls back to printing the manual commands if the install fails). Vue pages are `.vue` single-file components under `resources/js/pages/`; type-check them with `vue-tsc --noEmit -p resources/js/tsconfig.json`. Then prompts (in a real terminal only — auto-declines in CI/non-TTY) to auto-wire `src/main.ts` (Handlebars view engine + static assets) and `src/app.module.ts` (`InertiaModule.forRoot()` registration), but only when those files still match the untouched `nest new` scaffold — otherwise it prints the snippet instead of guessing an edit.
 
 Re-running the command is safe — every file/patch step skips whatever already exists.
 

@@ -18,7 +18,7 @@
 - 🌐 **Optional Server‑Side Rendering (SSR)**
 - ✅ **Validation error flashing and exception handling** (`@InertiaValidate()`, `@InertiaHandleException()`)
 - 🧪 **Testing utilities**
-- ⚙️ **CLI scaffolding** (`npx inertia-nestjs react`)
+- ⚙️ **CLI scaffolding** (`npx inertia-nestjs react` or `npx inertia-nestjs vue`)
 - 📦 **Inspired by `inertia-laravel`**
 
 ---
@@ -43,13 +43,14 @@ npm install @inertiajs/vue3
 
 # Scaffolding
 
-Two CLI commands are available once the package is installed:
+Three CLI commands are available once the package is installed:
 
 ```bash
-npx inertia-nestjs react
+npx inertia-nestjs react   # React + Vite frontend
+npx inertia-nestjs vue     # Vue 3 + Vite frontend
 ```
 
-Scaffolds a React + Vite frontend into the current NestJS project.
+Scaffolds the frontend into the current NestJS project: the client and SSR entries, `vite.config.mts`, `views/app.hbs`, the build scripts (`build:ssr`, `serve:ssr`, `dev:client`), and the framework's packages. A `tsconfig.json` that contains comments is never rewritten (that would delete them); the CLI prints the lines to add instead.
 
 ```bash
 npx inertia-nestjs skill
@@ -682,13 +683,14 @@ InertiaModule.forRoot({
     ssr: {
         enabled: true,
         url: 'http://127.0.0.1:13714',
-        bundlePath: 'bootstrap/ssr/ssr.js',
         exclude: ['/admin/*'], // skip SSR for these routes (falls back to CSR)
     },
 });
 ```
 
 If the SSR server is unavailable or the bundle is missing, the adapter automatically **falls back to client-side rendering**.
+
+Without `bundlePath`, the adapter looks for `bootstrap/ssr/ssr.mjs` (what the scaffold builds) and `bootstrap/ssr/ssr.js`. Only set `bundlePath` for a different location — and make it match your build exactly, since a wrong path silently turns SSR off.
 
 `exclude` takes glob patterns matched against the page URL: a plain path (`/admin`) matches only that exact path; append `*` (`/admin/*`) to match everything under it. Useful for excluding auth-gated dashboards from SSR while keeping it for public/SEO-critical pages.
 
@@ -721,6 +723,30 @@ createServer(page =>
     },
 
     setup: ({ App, props }) => <App {...props} />,
+  }),
+);
+```
+
+Vue:
+
+```ts
+import { createSSRApp, h } from 'vue';
+import { renderToString } from 'vue/server-renderer';
+import { createInertiaApp } from '@inertiajs/vue3';
+import createServer from '@inertiajs/vue3/server';
+
+createServer(page =>
+  createInertiaApp({
+    page,
+    render: renderToString,
+
+    resolve: async name => {
+      const pages = import.meta.glob('./pages/**/*.vue');
+      const module = await pages[`./pages/${name}.vue`]();
+      return module.default;
+    },
+
+    setup: ({ App, props, plugin }) => createSSRApp({ render: () => h(App, props) }).use(plugin),
   }),
 );
 ```

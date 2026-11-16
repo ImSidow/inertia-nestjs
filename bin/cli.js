@@ -10,9 +10,8 @@ const {
   patchPackageJsonScripts,
   patchGitignore,
 } = require('./lib/json-patches');
+const { FRAMEWORKS } = require('./lib/frameworks');
 const {
-  DEPENDENCIES,
-  DEV_DEPENDENCIES,
   detectPackageManager,
   installPackages,
   installDependencies,
@@ -27,6 +26,9 @@ function logPatchResult(result) {
     console.log(`skipped  ${result.file} (already up to date)`);
   } else if (result.status === 'missing') {
     console.log(`skipped  ${result.file} (not found)`);
+  } else if (result.status === 'manual') {
+    // Has comments: rewriting it would delete them, so say exactly what to add.
+    console.log(`skipped  ${result.file} (has comments, edit it yourself: ${result.instructions})`);
   } else {
     console.log(`skipped  ${result.file} (not valid JSON — leave it to you)`);
   }
@@ -70,11 +72,11 @@ Install and wire up the Handlebars view engine and static assets:
      hbs.registerHelper('json', (value) => JSON.stringify(value).replace(/</g, '\\\\u003c'));
 `;
 
-function manualInstallFallback(manager) {
+function manualInstallFallback(manager, framework) {
   return `
 Automatic install via ${manager} failed — install manually:
-   npm install ${DEPENDENCIES.join(' ')}
-   npm install -D ${DEV_DEPENDENCIES.join(' ')} --legacy-peer-deps
+   npm install ${framework.dependencies.join(' ')}
+   npm install -D ${framework.devDependencies.join(' ')} --legacy-peer-deps
 `;
 }
 
@@ -112,10 +114,11 @@ function runSkill(cwd) {
   for (const file of skipped) console.log(`skipped  ${file} (already exists)`);
 }
 
-async function runReact(cwd) {
+async function runFramework(cwd, name) {
   if (!requireNestProject(cwd)) return;
 
-  const templateDir = path.join(__dirname, '..', 'templates', 'react');
+  const framework = FRAMEWORKS[name];
+  const templateDir = path.join(__dirname, '..', 'templates', framework.template);
   const { created, skipped } = copyTemplate(templateDir, cwd);
 
   for (const file of created) console.log(`created  ${file}`);
@@ -123,11 +126,11 @@ async function runReact(cwd) {
 
   logPatchResult(patchTsconfigBuildExclude(cwd));
   logPatchResult(patchRootTsconfig(cwd));
-  logPatchResult(patchPackageJsonScripts(cwd));
+  logPatchResult(patchPackageJsonScripts(cwd, framework.ssrEntry));
   logPatchResult(patchGitignore(cwd));
 
-  const { manager, success } = installDependencies(cwd);
-  console.log(success ? `installed dependencies via ${manager}` : manualInstallFallback(manager));
+  const { manager, success } = installDependencies(cwd, framework);
+  console.log(success ? `installed dependencies via ${manager}` : manualInstallFallback(manager, framework));
 
   const wireMain = await promptYesNo(
     '\nAuto-wire src/main.ts for the Handlebars view engine and static assets?',
@@ -156,9 +159,10 @@ async function run(argv, cwd) {
   const subcommand = argv[2];
 
   if (subcommand === 'skill') return runSkill(cwd);
-  if (subcommand === 'react') return runReact(cwd);
+  if (Object.hasOwn(FRAMEWORKS, subcommand ?? '')) return runFramework(cwd, subcommand);
 
-  console.error(`Usage: inertia-nestjs react | inertia-nestjs skill\n\nUnknown subcommand: ${subcommand || '(none)'}`);
+  const frameworks = Object.keys(FRAMEWORKS).join(' | inertia-nestjs ');
+  console.error(`Usage: inertia-nestjs ${frameworks} | inertia-nestjs skill\n\nUnknown subcommand: ${subcommand || '(none)'}`);
   process.exitCode = 1;
 }
 

@@ -3,9 +3,11 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { FRAMEWORKS } = require('./frameworks');
 
-const DEPENDENCIES = ['@inertiajs/react', '@inertiajs/vite', 'react', 'react-dom'];
-const DEV_DEPENDENCIES = ['vite', '@vitejs/plugin-react', '@types/react', '@types/react-dom'];
+// Kept for callers of the old React-only API.
+const DEPENDENCIES = FRAMEWORKS.react.dependencies;
+const DEV_DEPENDENCIES = FRAMEWORKS.react.devDependencies;
 
 // Detected from the lockfile already present, since a project's own choice
 // of package manager isn't recorded anywhere else. Defaults to npm — every
@@ -48,12 +50,12 @@ function installPackages(manager, cwd, packages, dev) {
   return runInstallCommand(manager, cwd, args, packages);
 }
 
-function installDependencies(cwd) {
+function installDependencies(cwd, framework = FRAMEWORKS.react) {
   const manager = detectPackageManager(cwd);
 
   console.log(`\nInstalling dependencies with ${manager}...`);
-  const depsOk = installPackages(manager, cwd, DEPENDENCIES, false);
-  const devDepsOk = depsOk && installPackages(manager, cwd, DEV_DEPENDENCIES, true);
+  const depsOk = installPackages(manager, cwd, framework.dependencies, false);
+  const devDepsOk = depsOk && installPackages(manager, cwd, framework.devDependencies, true);
 
   return { manager, success: depsOk && devDepsOk };
 }

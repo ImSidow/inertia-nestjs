@@ -18,9 +18,9 @@ const {
     templateDir: string,
     targetDir: string,
   ) => { created: string[]; skipped: string[] };
-  patchTsconfigBuildExclude: (cwd: string) => { file: string; status: string; additions?: string[] };
-  patchRootTsconfig: (cwd: string) => { file: string; status: string };
-  patchPackageJsonScripts: (cwd: string) => { file: string; status: string; additions?: string[] };
+  patchTsconfigBuildExclude: (cwd: string) => { file: string; status: string; additions?: string[]; instructions?: string };
+  patchRootTsconfig: (cwd: string) => { file: string; status: string; instructions?: string };
+  patchPackageJsonScripts: (cwd: string, ssrEntry?: string) => { file: string; status: string; additions?: string[] };
   patchGitignore: (cwd: string) => { file: string; status: string; additions?: string[] };
   detectPackageManager: (cwd: string) => string;
   wireMainTs: (cwd: string) => { file: string; status: string };
@@ -274,7 +274,7 @@ describe('patchPackageJsonScripts', () => {
       'build:client': 'vite build',
       'build:server': 'vite build --ssr resources/js/ssr.tsx',
       'build:ssr': 'npm run build:client && npm run build:server',
-      'serve:ssr': 'node bootstrap/ssr/ssr.js',
+      'serve:ssr': 'node bootstrap/ssr/ssr.mjs',
     });
   });
 
@@ -508,5 +508,87 @@ export class AppModule {}
     const dir = mkTempDir();
 
     expect(wireAppModule(dir)).toEqual({ file: 'src/app.module.ts', status: 'missing' });
+  });
+});
+
+describe('frameworks (react, vue)', () => {
+  const { FRAMEWORKS } = require('../bin/lib/frameworks') as {
+    FRAMEWORKS: Record<string, { template: string; dependencies: string[]; devDependencies: string[]; ssrEntry: string }>;
+  };
+  const templates = path.join(__dirname, '..', 'templates');
+
+  it('offers react and vue', () => {
+    expect(Object.keys(FRAMEWORKS).sort()).toEqual(['react', 'vue']);
+    expect(FRAMEWORKS.vue.dependencies).toEqual(['@inertiajs/vue3', '@inertiajs/vite', 'vue']);
+  });
+
+  for (const name of ['react', 'vue']) {
+    it(`${name}: the template has its entries, the shared view, and an ssr.mjs bundle`, () => {
+      const dir = path.join(templates, FRAMEWORKS[name].template);
+      const ext = name === 'react' ? 'tsx' : 'ts';
+      for (const file of [`resources/js/app.${ext}`, FRAMEWORKS[name].ssrEntry, 'vite.config.mts', 'views/app.hbs']) {
+        expect(fs.existsSync(path.join(dir, file)), file).toBe(true);
+      }
+      expect(fs.readFileSync(path.join(dir, 'vite.config.mts'), 'utf8')).toContain("entryFileNames: 'ssr.mjs'");
+      expect(fs.readFileSync(path.join(dir, 'views/app.hbs'), 'utf8')).toBe(
+        fs.readFileSync(path.join(templates, 'react', 'views/app.hbs'), 'utf8'),
+      );
+    });
+  }
+
+  it("vue's build scripts point at its own SSR entry", () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'x' }));
+    patchPackageJsonScripts(dir, FRAMEWORKS.vue.ssrEntry);
+    const written = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+    expect(written.scripts['build:server']).toBe('vite build --ssr resources/js/ssr.ts');
+    expect(written.scripts['serve:ssr']).toBe('node bootstrap/ssr/ssr.mjs');
+  });
+});
+
+describe('tsconfig files with comments (JSONC)', () => {
+  const { stripJsonc } = require('../bin/lib/json-patches') as { stripJsonc: (text: string) => string };
+  const commented = `{
+  // NestJS defaults
+  "compilerOptions": {
+    "outDir": "./dist", /* build output */
+    "baseUrl": "http://not-a-comment.test//x",
+  },
+}
+`;
+
+  it('reads JSONC: strips comments outside strings and trailing commas', () => {
+    expect(JSON.parse(stripJsonc(commented))).toEqual({
+      compilerOptions: { outDir: './dist', baseUrl: 'http://not-a-comment.test//x' },
+    });
+  });
+
+  it('never rewrites a commented tsconfig.json; it says exactly what to add', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(path.join(dir, 'tsconfig.json'), commented);
+    const result = patchRootTsconfig(dir);
+    expect(result.status).toBe('manual');
+    expect(result.instructions).toBe(
+      'add to "compilerOptions.paths": "@/*": ["./resources/js/*"]; add to "exclude": "resources", "vite.config.mts"',
+    );
+    expect(fs.readFileSync(path.join(dir, 'tsconfig.json'), 'utf8')).toBe(commented);
+  });
+
+  it('reports already-present for a commented tsconfig that needs nothing', () => {
+    const dir = mkTempDir();
+    fs.writeFileSync(
+      path.join(dir, 'tsconfig.build.json'),
+      `{ // build config\n "exclude": ["node_modules", "resources", "vite.config.mts",] }\n`,
+    );
+    expect(patchTsconfigBuildExclude(dir).status).toBe('already-present');
+  });
+
+  it('tells you what to add to a commented tsconfig.build.json', () => {
+    const dir = mkTempDir();
+    const text = `{\n  // build\n  "exclude": ["node_modules"]\n}\n`;
+    fs.writeFileSync(path.join(dir, 'tsconfig.build.json'), text);
+    const result = patchTsconfigBuildExclude(dir);
+    expect(result).toMatchObject({ status: 'manual', instructions: 'add to "exclude": "resources", "vite.config.mts"' });
+    expect(fs.readFileSync(path.join(dir, 'tsconfig.build.json'), 'utf8')).toBe(text);
   });
 });

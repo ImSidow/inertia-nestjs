@@ -1,0 +1,22 @@
+<html lang='en'>
+  <head>
+    <meta charset='UTF-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+
+    {{#each ssrHead}}
+      {{{this}}}
+    {{/each}}
+
+    <link rel='stylesheet' href='/build/app.css' />
+    <script type='module' src='/build/app.js'></script>
+  </head>
+  <body>
+    {{! The v3 SSR body already contains the page <script> and the #app root. }}
+    {{#if ssrBody}}
+      {{{ssrBody}}}
+    {{else}}
+      <script type='application/json' data-page='app'>{{{json page}}}</script>
+      <div id='app'></div>
+    {{/if}}
+  </body>
+</html>
